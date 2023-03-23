@@ -12,18 +12,28 @@
 # Dependencies are stored in the Makefile.dep file. To rebuild this file
 # Just use 'make dep', but this is only needed by developers.
 
+# shell执行mkreleasehdr.sh文件 创建release.h写几条define指令
+# :=立即赋值 变量取值立即展开
 release_hdr := $(shell sh -c './mkreleasehdr.sh')
+# shell指令 获取操作系统主机名称 Darwin
 uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
+# shell指令 获取服务器硬件架构 x86_64
 uname_M := $(shell sh -c 'uname -m 2>/dev/null || echo not')
+# 编译优化选项 -O后面跟数字 编译器对代码进行自动优化编译 输出效率更高的可执行文件
+# 数字越大 优化越高 5个级别: 00-04
+# ?=条件赋值 如果变量已经赋值 就不要重新赋值了
 OPTIMIZATION?=-O2
+# 依赖目标
 DEPENDENCY_TARGETS=hiredis linenoise lua hdr_histogram
 NODEPS:=clean distclean
 
 # Default settings
+# -pedantic保证代码规范满足ISO C和ISO C++标准
 STD=-pedantic -DREDIS_STATIC=''
 
 # Use -Wno-c11-extensions on clang, either where explicitly used or on
 # platforms we can assume it's being used.
+# $(findstring find, in)函数 在in字符串中查找find字符串 找到返回find 否则返回空字符串
 ifneq (,$(findstring clang,$(CC)))
   STD+=-Wno-c11-extensions
 else
@@ -31,6 +41,9 @@ ifneq (,$(findstring FreeBSD,$(uname_S)))
   STD+=-Wno-c11-extensions
 endif
 endif
+# -Wall 输出所有编译警告信息
+# -W 在编译中开启一些额外的警告信息
+# -Wno-missing-field-initializers 不输出missing-的警告信息
 WARN=-Wall -W -Wno-missing-field-initializers
 OPT=$(OPTIMIZATION)
 
@@ -44,12 +57,15 @@ else
 	STD+=-std=c99
 endif
 
+# 默认目录
 PREFIX?=/usr/local
+# 安装目录
 INSTALL_BIN=$(PREFIX)/bin
 INSTALL=install
 PKG_CONFIG?=pkg-config
 
 # Default allocator defaults to Jemalloc if it's not an ARM
+# 指定内存分配器
 MALLOC=libc
 ifneq ($(uname_M),armv6l)
 ifneq ($(uname_M),armv7l)
@@ -296,6 +312,8 @@ REDIS_BENCHMARK_OBJ=ae.o anet.o redis-benchmark.o adlist.o dict.o zmalloc.o rele
 REDIS_CHECK_RDB_NAME=redis-check-rdb$(PROG_SUFFIX)
 REDIS_CHECK_AOF_NAME=redis-check-aof$(PROG_SUFFIX)
 
+# redis源码根目录下makefile中的cd src && make all
+# MakeFile真正工作的地方
 all: $(REDIS_SERVER_NAME) $(REDIS_SENTINEL_NAME) $(REDIS_CLI_NAME) $(REDIS_BENCHMARK_NAME) $(REDIS_CHECK_RDB_NAME) $(REDIS_CHECK_AOF_NAME)
 	@echo ""
 	@echo "Hint: It's a good idea to run 'make test' ;)"

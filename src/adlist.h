@@ -33,64 +33,79 @@
 
 /* Node, List, and Iterator are the only data structures used currently. */
 
+// 链表节点
 typedef struct listNode {
+    // 前驱节点
     struct listNode *prev;
+    // 后继节点
     struct listNode *next;
+    // 节点存储的值
     void *value;
 } listNode;
 
+// 链表迭代器
+// 单向
 typedef struct listIter {
+    // 当前迭代位置的下一个节点
     listNode *next;
+    // 标识迭代器方向
     int direction;
 } listIter;
 
+// 链表 双链表
 typedef struct list {
+    // 头节点 实节点
     listNode *head;
+    // 尾节点 实节点
     listNode *tail;
+    // 复制函数指针 负责实现链表节点的复制 没有指定就浅拷贝
     void *(*dup)(void *ptr);
+    // 释放函数指针 负责实现链表节点的值的释放
     void (*free)(void *ptr);
+    // 匹配函数指针 负责搜索链表时匹配链表节点值
     int (*match)(void *ptr, void *key);
+    // 列表长度
     unsigned long len;
 } list;
 
 /* Functions implemented as macros */
-#define listLength(l) ((l)->len)
-#define listFirst(l) ((l)->head)
-#define listLast(l) ((l)->tail)
-#define listPrevNode(n) ((n)->prev)
-#define listNextNode(n) ((n)->next)
-#define listNodeValue(n) ((n)->value)
+#define listLength(l) ((l)->len) // 链表长度
+#define listFirst(l) ((l)->head) // 链表头节点 实节点
+#define listLast(l) ((l)->tail) // 链表尾节点 实节点
+#define listPrevNode(n) ((n)->prev) // 节点的前驱节点
+#define listNextNode(n) ((n)->next) // 节点的后继节点
+#define listNodeValue(n) ((n)->value) // 节点的值 函数指针
 
-#define listSetDupMethod(l,m) ((l)->dup = (m))
-#define listSetFreeMethod(l,m) ((l)->free = (m))
-#define listSetMatchMethod(l,m) ((l)->match = (m))
+#define listSetDupMethod(l,m) ((l)->dup = (m)) // 链表节点值的复制方法 设置
+#define listSetFreeMethod(l,m) ((l)->free = (m)) // 链表节点值的释放方法 设置
+#define listSetMatchMethod(l,m) ((l)->match = (m)) // 链表节点值的匹配方法 设置
 
 #define listGetDupMethod(l) ((l)->dup)
 #define listGetFreeMethod(l) ((l)->free)
 #define listGetMatchMethod(l) ((l)->match)
 
 /* Prototypes */
-list *listCreate(void);
-void listRelease(list *list);
-void listEmpty(list *list);
-list *listAddNodeHead(list *list, void *value);
-list *listAddNodeTail(list *list, void *value);
-list *listInsertNode(list *list, listNode *old_node, void *value, int after);
-void listDelNode(list *list, listNode *node);
-listIter *listGetIterator(list *list, int direction);
-listNode *listNext(listIter *iter);
-void listReleaseIterator(listIter *iter);
-list *listDup(list *orig);
-listNode *listSearchKey(list *list, void *key);
-listNode *listIndex(list *list, long index);
-void listRewind(list *list, listIter *li);
-void listRewindTail(list *list, listIter *li);
-void listRotateTailToHead(list *list);
-void listRotateHeadToTail(list *list);
-void listJoin(list *l, list *o);
+list *listCreate(void); // 创建链表
+void listRelease(list *list); // 链表的释放
+void listEmpty(list *list); // 释放链表上所有节点
+list *listAddNodeHead(list *list, void *value); // 添加元素为链表头节点
+list *listAddNodeTail(list *list, void *value); // 添加元素为链表尾节点
+list *listInsertNode(list *list, listNode *old_node, void *value, int after); // 插入节点
+void listDelNode(list *list, listNode *node); // 删除链表上指定节点
+listIter *listGetIterator(list *list, int direction); // 链表指定方向的迭代器
+listNode *listNext(listIter *iter); // 迭代器内下一个节点
+void listReleaseIterator(listIter *iter); // 释放迭代器
+list *listDup(list *orig); // 复制链表
+listNode *listSearchKey(list *list, void *key); // 关键字搜索节点
+listNode *listIndex(list *list, long index); // 下标索引节点
+void listRewind(list *list, listIter *li); // 重置迭代器 head->tail方向
+void listRewindTail(list *list, listIter *li); // 重置迭代器 tail->head方向
+void listRotateTailToHead(list *list); // 链表tail节点挂成head
+void listRotateHeadToTail(list *list); // 链表head节点挂成tail
+void listJoin(list *l, list *o); // 链表o挂到链表l上
 
 /* Directions for iterators */
-#define AL_START_HEAD 0
-#define AL_START_TAIL 1
+#define AL_START_HEAD 0 // 迭代方向 头->尾
+#define AL_START_TAIL 1 // 迭代方向 尾->头
 
 #endif /* __ADLIST_H__ */

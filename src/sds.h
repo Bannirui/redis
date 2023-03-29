@@ -33,6 +33,7 @@
 #ifndef __SDS_H
 #define __SDS_H
 
+// 最大分配内存1M
 #define SDS_MAX_PREALLOC (1024*1024)
 extern const char *SDS_NOINIT;
 
@@ -40,55 +41,103 @@ extern const char *SDS_NOINIT;
 #include <stdarg.h>
 #include <stdint.h>
 
+// 字符数组
 typedef char *sds;
 
 /* Note: sdshdr5 is never used, we just access the flags byte directly.
  * However is here to document the layout of type 5 SDS strings. */
+
+// __attribute__ ((__packed__)) 告诉编译器取消结构体在编译过程中的对齐优化 按照实际字节占用进行对齐
+// 目的在于指针寻址的时候可以根据sds[-1]直接找到sds对应的flags
+// 知道sds的flags就可以进一步根据类型获取到对应的len和alloc
+
+// 最长(2^5 - 1)长度的sdshdr
+// 结构体size 1Byte
 struct __attribute__ ((__packed__)) sdshdr5 {
+    // 1个Byte 8位
+    // 高5位 保存字符串长度
+    // 低3位 保存类型标志
     unsigned char flags; /* 3 lsb of type, and 5 msb of string length */
     char buf[];
 };
+// 最长(2^8 -1)长度的sdshdr
+// 结构体size 3Byte
 struct __attribute__ ((__packed__)) sdshdr8 {
+    // 已经使用的长度
+    // unsigned char 8位
     uint8_t len; /* used */
+    // buf分配的总长度 字符数组的总大小
+    // 剩余大小=alloc-len
     uint8_t alloc; /* excluding the header and null terminator */
+    // 1个Byte 8位
+    // 高5位 保留位
+    // 低3位 保存类型标志
     unsigned char flags; /* 3 lsb of type, 5 unused bits */
+    // 字符数组
     char buf[];
 };
+// 最长(2^16 -1)长度的sdshdr
+// 结构体size 5Byte
 struct __attribute__ ((__packed__)) sdshdr16 {
+    // unsigned short 16位
     uint16_t len; /* used */
     uint16_t alloc; /* excluding the header and null terminator */
     unsigned char flags; /* 3 lsb of type, 5 unused bits */
     char buf[];
 };
+// 最长(2^32 -1)长度的sdshdr
+// 结构体size 9Byte
 struct __attribute__ ((__packed__)) sdshdr32 {
+    // unsigned int 32位
     uint32_t len; /* used */
     uint32_t alloc; /* excluding the header and null terminator */
     unsigned char flags; /* 3 lsb of type, 5 unused bits */
     char buf[];
 };
+// 最长(2^64 -1)长度的sdshdr
+// 结构体size 17Byte
 struct __attribute__ ((__packed__)) sdshdr64 {
+    // unsigned long long 64位
     uint64_t len; /* used */
     uint64_t alloc; /* excluding the header and null terminator */
     unsigned char flags; /* 3 lsb of type, 5 unused bits */
     char buf[];
 };
 
+// flags的5中类型
 #define SDS_TYPE_5  0
 #define SDS_TYPE_8  1
 #define SDS_TYPE_16 2
 #define SDS_TYPE_32 3
 #define SDS_TYPE_64 4
+// flags的低3位掩码 0x7
 #define SDS_TYPE_MASK 7
 #define SDS_TYPE_BITS 3
 #define SDS_HDR_VAR(T,s) struct sdshdr##T *sh = (void*)((s)-(sizeof(struct sdshdr##T)));
+// 在宏定义中
+//          #作用是把宏参数变成一个字符串
+//          ##作用是把两个宏参数连接起来
+// T        8
+// s        s
+// 宏表达式   ((strct sdshdr8 *)((s)-(sizeof(struct sdshdr8))))
+// s指向的是buf字符数组的首元素地址
+// sdshdr引用地址=字符数组的引用地址-结构体大小
 #define SDS_HDR(T,s) ((struct sdshdr##T *)((s)-(sizeof(struct sdshdr##T))))
+// sdshdr5的flags是1个char共8位
+// 高5位 存储字符串长度
+// 低3位 存储字符串类型
+// flags右移3位就是sdshdr5的字符串长度
 #define SDS_TYPE_5_LEN(f) ((f)>>SDS_TYPE_BITS)
 
+// sds字符串长度
+// sds总共5种类型
 static inline size_t sdslen(const sds s) {
-    unsigned char flags = s[-1];
+    // s指针指向的是buf s[-1]找到flags
+    unsigned char flags = s[-1]; // sds类型
+    // 0000 0111作为掩码只看低3位 判定sds类型
     switch(flags&SDS_TYPE_MASK) {
         case SDS_TYPE_5:
-            return SDS_TYPE_5_LEN(flags);
+            return SDS_TYPE_5_LEN(flags); // sdshdr5的flags 低3位是类型标志 高5位是字符串长度 flags右移3位就是高5位的值
         case SDS_TYPE_8:
             return SDS_HDR(8,s)->len;
         case SDS_TYPE_16:
@@ -101,8 +150,13 @@ static inline size_t sdslen(const sds s) {
     return 0;
 }
 
+// sds可用空间
+// 可用长度=申请的内存-字符串长度
 static inline size_t sdsavail(const sds s) {
+    // s引用指向在buf上 向前移动一个Byte指向flags
     unsigned char flags = s[-1];
+    // flags掩码0000 0111
+    // 获取flags的低3位
     switch(flags&SDS_TYPE_MASK) {
         case SDS_TYPE_5: {
             return 0;
@@ -127,13 +181,15 @@ static inline size_t sdsavail(const sds s) {
     return 0;
 }
 
+// 重置sds的长度
+// @param newlen sds的新长度
 static inline void sdssetlen(sds s, size_t newlen) {
-    unsigned char flags = s[-1];
-    switch(flags&SDS_TYPE_MASK) {
+    unsigned char flags = s[-1]; // flags
+    switch(flags&SDS_TYPE_MASK) { // flags的低3位 判定sds类型
         case SDS_TYPE_5:
             {
-                unsigned char *fp = ((unsigned char*)s)-1;
-                *fp = SDS_TYPE_5 | (newlen << SDS_TYPE_BITS);
+                unsigned char *fp = ((unsigned char*)s)-1; // flags
+                *fp = SDS_TYPE_5 | (newlen << SDS_TYPE_BITS); // 高5位为新长度 低三位为标志位
             }
             break;
         case SDS_TYPE_8:

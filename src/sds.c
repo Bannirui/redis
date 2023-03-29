@@ -41,6 +41,13 @@
 
 const char *SDS_NOINIT = "SDS_NOINIT";
 
+// sds的的结构体大小 也就是sds的header大小 因为结构体最后是buf数组名 不占大小
+//                   header
+// sdshdr5           flags=1
+// sdshdr8   len+alloc+flags=1+1+1=3
+// sdshdr16  len+alloc+flags=2+2+1=5
+// sdshdr32  len+alloc+flags=4+4+1=9
+// sdshdr64  len+alloc+flags=8+8+1=17
 static inline int sdsHdrSize(char type) {
     switch(type&SDS_TYPE_MASK) {
         case SDS_TYPE_5:
@@ -57,6 +64,8 @@ static inline int sdsHdrSize(char type) {
     return 0;
 }
 
+// 根据字符串长度反推字符串类型
+// 也就是flags的低三位
 static inline char sdsReqType(size_t string_size) {
     if (string_size < 1<<5)
         return SDS_TYPE_5;
@@ -73,6 +82,7 @@ static inline char sdsReqType(size_t string_size) {
 #endif
 }
 
+// sds所容标识的字符串的最大长度
 static inline size_t sdsTypeMaxSize(char type) {
     if (type == SDS_TYPE_5)
         return (1<<5) - 1;
@@ -100,18 +110,40 @@ static inline size_t sdsTypeMaxSize(char type) {
  * You can print the string with printf() as there is an implicit \0 at the
  * end of the string. However the string is binary safe and can contain
  * \0 characters in the middle, as the length is stored in the sds header. */
+// 创建sds字符串
+// @param init 初始化的字符串内容
+// @param initlen 目标长度
+// @param trymalloc 控制使用不同的malloc实现方式
+// @return 引用指向sds的buf
 sds _sdsnewlen(const void *init, size_t initlen, int trymalloc) {
     void *sh;
     sds s;
+    // 字符串类型
+    // sdshdr5
+    // sdshdr8
+    // sdshdr16
+    // sdshdr32
+    // sdshdr64
     char type = sdsReqType(initlen);
     /* Empty strings are usually created in order to append. Use type 8
      * since type 5 is not good at this. */
     if (type == SDS_TYPE_5 && initlen == 0) type = SDS_TYPE_8;
+    // sds结构体的大小
+    // 其实也就是sds的header大小(多少个Byte)
+    // sdshdr5 flags=1
+    // sdshdr8 len+alloc+flags=3
+    // sdshdr16 len+alloc+flags=5
+    // sdshdr32 len+alloc+flags=9
+    // sdshdr64 len+alloc+flags=17
     int hdrlen = sdsHdrSize(type);
     unsigned char *fp; /* flags pointer. */
     size_t usable;
 
     assert(initlen + hdrlen + 1 > initlen); /* Catch size_t overflow */
+    // sds的内存大小
+    // header+字符串长度+字符串结束符(\0)
+    // 分配sds内存
+    // usable是申请到的内存大小
     sh = trymalloc?
         s_trymalloc_usable(hdrlen+initlen+1, &usable) :
         s_malloc_usable(hdrlen+initlen+1, &usable);
@@ -119,22 +151,24 @@ sds _sdsnewlen(const void *init, size_t initlen, int trymalloc) {
     if (init==SDS_NOINIT)
         init = NULL;
     else if (!init)
-        memset(sh, 0, hdrlen+initlen+1);
-    s = (char*)sh+hdrlen;
-    fp = ((unsigned char*)s)-1;
-    usable = usable-hdrlen-1;
+        memset(sh, 0, hdrlen+initlen+1); // 没有指定sds初始化方法 将sds内存全部置0
+    s = (char*)sh+hdrlen; // s指向的是buf
+    fp = ((unsigned char*)s)-1; // buf指针-1Byte就是flags
+    usable = usable-hdrlen-1; // sds分配给buf长度=总共申请到的内存大小-sds的header-buf中字符串结束符
+    // buf大小上限(已经刨除了字符串结束符\0)
+    // buf剩余可用=buf总长度-字符串长度
     if (usable > sdsTypeMaxSize(type))
         usable = sdsTypeMaxSize(type);
     switch(type) {
         case SDS_TYPE_5: {
-            *fp = type | (initlen << SDS_TYPE_BITS);
+            *fp = type | (initlen << SDS_TYPE_BITS); // flags
             break;
         }
         case SDS_TYPE_8: {
             SDS_HDR_VAR(8,s);
-            sh->len = initlen;
-            sh->alloc = usable;
-            *fp = type;
+            sh->len = initlen; // 字符串长度
+            sh->alloc = usable; // sds实际申请的大小(多少个Byte)
+            *fp = type; // flags
             break;
         }
         case SDS_TYPE_16: {
@@ -160,15 +194,23 @@ sds _sdsnewlen(const void *init, size_t initlen, int trymalloc) {
         }
     }
     if (initlen && init)
-        memcpy(s, init, initlen);
-    s[initlen] = '\0';
-    return s;
+        memcpy(s, init, initlen); // 把buf数组的前initlen个字符填充上字符串init
+    s[initlen] = '\0'; // 结束符
+    return s; // 引用指向的是sds的buf数组
 }
 
+// 创建字符串
+// @param init 初始化的字符串内容
+// @param initlen 目标长度
+// @return 引用指向的是sds的buf数组
 sds sdsnewlen(const void *init, size_t initlen) {
     return _sdsnewlen(init, initlen, 0);
 }
 
+// 创建字符串
+// @param init 初始化的字符串内容
+// @param initlen 目标长度
+// @return 引用指向的是sds的buf数组
 sds sdstrynewlen(const void *init, size_t initlen) {
     return _sdsnewlen(init, initlen, 1);
 }
@@ -220,6 +262,7 @@ void sdsupdatelen(sds s) {
  * so that next append operations will not require allocations up to the
  * number of bytes previously available. */
 void sdsclear(sds s) {
+    // 重置sds的字符串长度位0
     sdssetlen(s, 0);
     s[0] = '\0';
 }
@@ -636,7 +679,12 @@ sds sdscatprintf(sds s, const char *fmt, ...) {
  * %U - 64 bit unsigned integer (unsigned long long, uint64_t)
  * %% - Verbatim "%" character.
  */
+// 字符串格式化输出
+// @param s 输出字符串
+// @param fmt 格式
+// @param ... 参数
 sds sdscatfmt(sds s, char const *fmt, ...) {
+    // 字符串长度
     size_t initlen = sdslen(s);
     const char *f = fmt;
     long i;
@@ -662,11 +710,11 @@ sds sdscatfmt(sds s, char const *fmt, ...) {
 
         switch(*f) {
         case '%':
-            next = *(f+1);
+            next = *(f+1); // %后面跟的是什么
             f++;
             switch(next) {
-            case 's':
-            case 'S':
+            case 's': // c的str
+            case 'S': // redis的sds
                 str = va_arg(ap,char*);
                 l = (next == 's') ? strlen(str) : sdslen(str);
                 if (sdsavail(s) < l) {
@@ -676,8 +724,8 @@ sds sdscatfmt(sds s, char const *fmt, ...) {
                 sdsinclen(s,l);
                 i += l;
                 break;
-            case 'i':
-            case 'I':
+            case 'i': // signed int
+            case 'I': // 64 int
                 if (next == 'i')
                     num = va_arg(ap,int);
                 else
@@ -693,8 +741,8 @@ sds sdscatfmt(sds s, char const *fmt, ...) {
                     i += l;
                 }
                 break;
-            case 'u':
-            case 'U':
+            case 'u': // unsigned int
+            case 'U': // 64位的unsigned int
                 if (next == 'u')
                     unum = va_arg(ap,unsigned int);
                 else

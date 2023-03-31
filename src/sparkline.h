@@ -31,16 +31,17 @@
 #define __SPARKLINE_H
 
 /* A sequence is represented of many "samples" */
+// 图像上的一个信息点
 struct sample {
     double value;
     char *label;
 };
 
 struct sequence {
-    int length;
-    int labels;
-    struct sample *samples;
-    double min, max;
+    int length; // 信息点数量
+    int labels; // 文字个数 有些信息点没有label描述
+    struct sample *samples; // 信息点列表
+    double min, max; // 信息点中的极值
 };
 
 #define SPARKLINE_NO_FLAGS 0

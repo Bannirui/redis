@@ -94,6 +94,13 @@ void freeSparklineSequence(struct sequence *seq) {
 /* Render part of a sequence, so that render_sequence() call call this function
  * with different parts in order to create the full output without overflowing
  * the current terminal columns. */
+// 渲染
+// @param output 渲染的结果以sds字符串形式展现
+// @param seq
+// @param rows
+// @param offset
+// @param len
+// @param flags
 sds sparklineRenderRange(sds output, struct sequence *seq, int rows, int offset, int len, int flags) {
     int j;
     double relmax = seq->max - seq->min;

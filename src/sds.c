@@ -48,24 +48,28 @@ const char *SDS_NOINIT = "SDS_NOINIT";
 // sdshdr16  len+alloc+flags=2+2+1=5
 // sdshdr32  len+alloc+flags=4+4+1=9
 // sdshdr64  len+alloc+flags=8+8+1=17
+// @param type 字符串类型
+// @return sds结构体大小
 static inline int sdsHdrSize(char type) {
     switch(type&SDS_TYPE_MASK) {
         case SDS_TYPE_5:
-            return sizeof(struct sdshdr5);
+            return sizeof(struct sdshdr5); // 1 byte
         case SDS_TYPE_8:
-            return sizeof(struct sdshdr8);
+            return sizeof(struct sdshdr8); // 3 bytes
         case SDS_TYPE_16:
-            return sizeof(struct sdshdr16);
+            return sizeof(struct sdshdr16); // 5 bytes
         case SDS_TYPE_32:
-            return sizeof(struct sdshdr32);
+            return sizeof(struct sdshdr32); // 9 bytes
         case SDS_TYPE_64:
-            return sizeof(struct sdshdr64);
+            return sizeof(struct sdshdr64); // 17 bytes
     }
     return 0;
 }
 
-// 根据字符串长度反推字符串类型
+// 根据字符串长度动态分配类型
 // 也就是flags的低三位
+// @param string_size 字符串长度
+// @return 能够容纳该长度字符串的sds数据结构类型
 static inline char sdsReqType(size_t string_size) {
     if (string_size < 1<<5)
         return SDS_TYPE_5;
@@ -82,7 +86,8 @@ static inline char sdsReqType(size_t string_size) {
 #endif
 }
 
-// sds所容标识的字符串的最大长度
+// @param type sds类型
+// @return sds不同数据结构所能容纳的字符串最大长度
 static inline size_t sdsTypeMaxSize(char type) {
     if (type == SDS_TYPE_5)
         return (1<<5) - 1;
@@ -118,7 +123,7 @@ static inline size_t sdsTypeMaxSize(char type) {
 sds _sdsnewlen(const void *init, size_t initlen, int trymalloc) {
     void *sh;
     sds s;
-    // 字符串类型
+    // 为字符串动态分配sds类型
     // sdshdr5
     // sdshdr8
     // sdshdr16

@@ -64,7 +64,7 @@ typedef struct list {
     void (*free)(void *ptr);
     // 匹配函数指针 负责搜索链表时匹配链表节点值
     int (*match)(void *ptr, void *key);
-    // 列表长度
+    // 链表长度
     unsigned long len;
 } list;
 

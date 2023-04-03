@@ -39,33 +39,35 @@
  * listSetFreeMethod.
  *
  * On error, NULL is returned. Otherwise the pointer to the new list. */
-// 创建列表
+// 创建链表实例
+// @return 双链表实例
 list *listCreate(void)
 {
     struct list *list;
 
-    // 申请内存空间
+    // 申请内存空间 申请48 bytes
     if ((list = zmalloc(sizeof(*list))) == NULL)
         return NULL;
     // 初始化操作
     list->head = list->tail = NULL;
     list->len = 0;
-    list->dup = NULL;
-    list->free = NULL;
-    list->match = NULL;
+    list->dup = NULL; // 节点复制函数
+    list->free = NULL; // 节点释放函数
+    list->match = NULL; // 节点匹配函数
     return list;
 }
 
 /* Remove all the elements from the list without destroying the list itself. */
-// 释放列表上所有节点
+// 释放链表上所有节点 从链表头开始遍历节点 逐个释放内存
+// @param list 链表实例
 void listEmpty(list *list)
 {
     unsigned long len;
     listNode *current, *next;
 
     current = list->head;
-    len = list->len; // 列表长度
-    while(len--) { // 轮询列表节点
+    len = list->len; // 链表长度
+    while(len--) { // 轮询链表节点
         next = current->next;
         if (list->free) list->free(current->value);
         zfree(current); // 释放节点
@@ -78,6 +80,8 @@ void listEmpty(list *list)
 /* Free the whole list.
  *
  * This function can't fail. */
+// 链表内存释放 包括链表上所有节点的释放和链表实例本身内存释放
+// @param list 链表实例
 void listRelease(list *list)
 {
     // 释放列表节点
@@ -92,14 +96,17 @@ void listRelease(list *list)
  * On error, NULL is returned and no operation is performed (i.e. the
  * list remains unaltered).
  * On success the 'list' pointer you pass to the function is returned. */
+// 添加元素为链表头节点
+// @param list 链表实例
+// @param value 待添加的元素
 list *listAddNodeHead(list *list, void *value)
 {
     listNode *node;
-    // 列表节点内存申请
+    // 列表节点内存申请 大小为24字节
     if ((node = zmalloc(sizeof(*node))) == NULL)
         return NULL;
-    node->value = value; // 节点的值
-    if (list->len == 0) { // 加进来的元素是首个节点
+    node->value = value; // 节点的值 value字段
+    if (list->len == 0) { // 既有的链表为空链表 加进来的元素是首个节点
         list->head = list->tail = node;
         node->prev = node->next = NULL;
     } else { // 链表指针操作
@@ -108,7 +115,7 @@ list *listAddNodeHead(list *list, void *value)
         list->head->prev = node;
         list->head = node;
     }
-    list->len++;
+    list->len++; // 链表节点计数更新
     return list;
 }
 
@@ -118,23 +125,28 @@ list *listAddNodeHead(list *list, void *value)
  * On error, NULL is returned and no operation is performed (i.e. the
  * list remains unaltered).
  * On success the 'list' pointer you pass to the function is returned. */
+// 添加元素为链表尾节点
+// @param list 链表实例
+// @param value 待添加的元素
 list *listAddNodeTail(list *list, void *value)
 {
     listNode *node;
 
+    // 申请内存24字节
     if ((node = zmalloc(sizeof(*node))) == NULL)
         return NULL;
-    node->value = value;
-    if (list->len == 0) {
+    node->value = value; // 节点的value字段
+    if (list->len == 0) { // 既有的链表为空 新添加的元素为首个元素
         list->head = list->tail = node;
         node->prev = node->next = NULL;
     } else {
+        // 链表操作
         node->prev = list->tail;
         node->next = NULL;
         list->tail->next = node;
         list->tail = node;
     }
-    list->len++;
+    list->len++; // 链表节点计数更新
     return list;
 }
 
@@ -171,6 +183,8 @@ list *listInsertNode(list *list, listNode *old_node, void *value, int after) {
  * It's up to the caller to free the private value of the node.
  *
  * This function can't fail. */
+// @param list 链表实例
+// @param node 要删除的节点
 void listDelNode(list *list, listNode *node)
 {
     if (node->prev)
@@ -182,8 +196,8 @@ void listDelNode(list *list, listNode *node)
     else // 要删除的node是尾节点
         list->tail = node->prev;
     if (list->free) list->free(node->value);
-    zfree(node);
-    list->len--;
+    zfree(node); // 释放节点内存
+    list->len--; // 更新链表节点计数
 }
 
 /* Returns a list iterator 'iter'. After the initialization every

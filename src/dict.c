@@ -107,10 +107,12 @@ static void _dictReset(dictht *ht)
 /* Create a new hash table */
 // 创建空字典实例
 // 字典里面的hash表是空的
+// @param type 用来填充dict实例的type字段
+// @param privDataPtr 用来填充dict实例的privdata字段
 dict *dictCreate(dictType *type,
         void *privDataPtr)
 {
-    // 分配字典内存
+    // 分配字典内存 算上填充字节 总共96 bytes
     dict *d = zmalloc(sizeof(*d));
     // 初始化字典
     _dictInit(d,type,privDataPtr);
@@ -120,6 +122,9 @@ dict *dictCreate(dictType *type,
 /* Initialize the hash table */
 // 字典初始化
 // 字典里面的hash表是空的
+// @param d 要初始化的dict实例
+// @param type 用来填充dict实例的type字段
+// @param privDataPtr 用来填充dict实例的privdata字段
 int _dictInit(dict *d, dictType *type,
         void *privDataPtr)
 {
@@ -155,7 +160,13 @@ int dictResize(dict *d)
 /* Expand or create the hash table,
  * when malloc_failed is non-NULL, it'll avoid panic if malloc fails (in which case it'll be set to 1).
  * Returns DICT_OK if expand was performed, and DICT_ERR if skipped. */
-// hash表扩容
+// dict实例的hash表扩容
+// @param d 要扩容的dict实例
+// @param size 要扩容到多大(多少个byte)
+// @param malloc_failed 内存分配失败标识符 如果调用方传递了该指针 扩容实现内部申请内存失败了 就标识为1通知调用方
+//                      目的在于函数的返回值标识的是统一的失败\成功 没有细分失败的详情 这样可以知道如果扩容失败了 是否是因为内存开辟导致的
+// @return 操作码 0-成功
+//               1-失败
 int _dictExpand(dict *d, unsigned long size, int* malloc_failed)
 {
     if (malloc_failed) *malloc_failed = 0;
@@ -167,7 +178,7 @@ int _dictExpand(dict *d, unsigned long size, int* malloc_failed)
         return DICT_ERR;
 
     dictht n; /* the new hash table */
-    // 保证扩容后大小是2的幂次方
+    // 保证扩容后大小是2的幂次方 这样就可以通过位运算计算key的hash桶脚标=hash&(len-1)
     unsigned long realsize = _dictNextPower(size);
 
     /* Detect overflows */
@@ -179,8 +190,8 @@ int _dictExpand(dict *d, unsigned long size, int* malloc_failed)
 
     /* Allocate the new hash table and initialize all pointers to NULL */
     // 新表
-    n.size = realsize;
-    n.sizemask = realsize-1;
+    n.size = realsize; // dictht字段size
+    n.sizemask = realsize-1; // dictht字段sizemask
     if (malloc_failed) {
         n.table = ztrycalloc(realsize*sizeof(dictEntry*));
         *malloc_failed = n.table == NULL;
@@ -189,7 +200,7 @@ int _dictExpand(dict *d, unsigned long size, int* malloc_failed)
     } else
         n.table = zcalloc(realsize*sizeof(dictEntry*));
 
-    n.used = 0;
+    n.used = 0; // dcitht字段used
 
     /* Is this the first initialization? If so it's not really a rehashing
      * we just set the first hash table so that it can accept keys. */
@@ -207,9 +218,9 @@ int _dictExpand(dict *d, unsigned long size, int* malloc_failed)
 
 /* return DICT_ERR if expand was not performed */
 // hash表扩容
-// @param d 要扩容的hash表
+// @param d 要扩容的dict实例
 // @param size 扩容到多大
-// @return
+// @return 操作标识符
 int dictExpand(dict *d, unsigned long size) {
     return _dictExpand(d, size, NULL);
 }
@@ -231,7 +242,7 @@ int dictTryExpand(dict *d, unsigned long size) {
  * will visit at max N*10 empty buckets in total, otherwise the amount of
  * work it does would be unbound and the function may block for a long time. */
 // 渐进式rehash实现
-// @param n 标识迁移桶的数量
+// @param n 迁移n个hash桶
 // @return 1 标识hash表还有节点待迁移
 //         0 标识hash表已经迁移完成
 int dictRehash(dict *d, int n) {
@@ -260,15 +271,16 @@ int dictRehash(dict *d, int n) {
             nextde = de->next;
             /* Get the index in the new hash table */
             // key在新表的hash桶位置
-            h = dictHashKey(d, de->key) & d->ht[1].sizemask;
+            h = dictHashKey(d, de->key) & d->ht[1].sizemask; // hash表长度是2的幂次方 通过位运算计算key的hash桶脚标
+            // 单链表头插法
             de->next = d->ht[1].table[h];
             d->ht[1].table[h] = de;
-            d->ht[0].used--;
-            d->ht[1].used++;
+            d->ht[0].used--; // 旧表上每迁移走一个键值对 就更新计数
+            d->ht[1].used++; // 新表上每迁过来一个键值对 就更新计数
             de = nextde;
         }
-        d->ht[0].table[d->rehashidx] = NULL;
-        d->rehashidx++;
+        d->ht[0].table[d->rehashidx] = NULL; // 一个桶上单链表所有节点都迁移完了
+        d->rehashidx++; // 一个桶迁移结束 后移待迁移的桶脚标
     }
 
     /* Check if we already rehashed the whole table... */
@@ -317,7 +329,7 @@ int dictRehashMilliseconds(dict *d, int ms) {
  * This function is called by common lookup or update operations in the
  * dictionary so that the hash table automatically migrates from H1 to H2
  * while it is actively used. */
-// 协助迁移一个hash桶
+// 协助迁移1个hash桶
 static void _dictRehashStep(dict *d) {
     // 没有迁移暂停
     // 在迭代器安全模式下会暂停rehash
@@ -326,8 +338,9 @@ static void _dictRehashStep(dict *d) {
 
 /* Add an element to the target hash table */
 // 添加kv键值对
-// @param 向d字典里面添加
+// @param 向哪个dict实例中添加键值对
 // @param [key, val]键值对 hash节点
+// @return 操作码 0-标识操作成功 1-标识操作失败
 int dictAdd(dict *d, void *key, void *val)
 {
     // 向字典的hash表添加了一个节点[key, null]
@@ -364,7 +377,7 @@ int dictAdd(dict *d, void *key, void *val)
 // 指定该节点的key value留着调用方设置
 // @param existing
 // @return null标识key已经存在key 不进行节点添加操作 并通过existing指针标识出已经存在的kv键值对节点
-//         非null标识新添加到hash表中的[key, null]半成品节点
+//         非null标识新添加到hash表中的[key, null]半成品节点 所谓的半成品指的是entry节点只有key字段 没有value字段
 dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing)
 {
     long index;
@@ -384,13 +397,15 @@ dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing)
      * system it is more likely that recently added entries are accessed
      * more frequently. */
     // 字典正在rehash就用新表 没在rehash就用旧表
+    // 正在rehash中 也就意味着最终需要将旧标上所有hash桶里面的entry节点都迁移到新表上
+    // 就不要往旧表上写数据了 直接一步到位写到新表上
     ht = dictIsRehashing(d) ? &d->ht[1] : &d->ht[0];
-    // 分配一个hash节点内存
+    // 分配一个hash节点内存 大小为48 bytes
     entry = zmalloc(sizeof(*entry));
     // 链表 头插法
     entry->next = ht->table[index];
     ht->table[index] = entry;
-    ht->used++; // hash表节点计数
+    ht->used++; // hash表entry键值对节点计数
 
     /* Set the hash entry fields. */
     // 设置节点的key
@@ -439,8 +454,13 @@ int dictReplace(dict *d, void *key, void *val)
  * existing key is returned.)
  *
  * See dictAddRaw() for more information. */
+// 根据key是否存在情况 对key进行新增或者查询 新增的场景是[key, val]半成品 value字段还没设置留着给调用方进行设置value
+// @param d dict实例
+// @param key key
 dictEntry *dictAddOrFind(dict *d, void *key) {
     dictEntry *entry, *existing;
+    // dict中不存在key 新增一个entry节点 entry指向的是半成品 value留给调用方关注
+    // dict中已经存在了key entry为null existing指向的是已经存在的entry节点
     entry = dictAddRaw(d,key,&existing);
     return entry ? entry : existing;
 }
@@ -568,8 +588,10 @@ void dictRelease(dict *d)
     zfree(d);
 }
 
-// 根据key查询hash节点
-// @return 字典d中key对应的hash表节点
+// 根据key查询键值对entry节点
+// @param d dict实例
+// @param key key
+// @return 字典d中key对应的entry节点
 dictEntry *dictFind(dict *d, const void *key)
 {
     dictEntry *he;
@@ -577,7 +599,7 @@ dictEntry *dictFind(dict *d, const void *key)
 
     // 字典为空
     if (dictSize(d) == 0) return NULL; /* dict is empty */
-    // 字典正在rehash状态
+    // 字典正在rehash状态 协助迁移1个hash桶
     if (dictIsRehashing(d)) _dictRehashStep(d);
     // key的hash值
     h = dictHashKey(d, key);
@@ -1150,10 +1172,11 @@ static unsigned long _dictNextPower(unsigned long size)
  * Note that if we are in the process of rehashing the hash table, the
  * index is always returned in the context of the second (new) hash table. */
 // 在字典hash表中key对应的hash表数组脚标 也就是桶位 存在key的时候用existing指针指向节点
-// @param d 字典
+// @param d dict实例
 // @param key 键
 // @param key的hash值
-// @param existing 指向hash表键值对节点 找到了key就把指针指向节点
+// @param existing 指向hash表键值对节点 key已经存在的时候找到了key就把指针指向键值对节点
+// @return key的hash桶脚标 -1标识key已经存在
 static long _dictKeyIndex(dict *d, const void *key, uint64_t hash, dictEntry **existing)
 {
     unsigned long idx, table;
@@ -1166,13 +1189,13 @@ static long _dictKeyIndex(dict *d, const void *key, uint64_t hash, dictEntry **e
     // 只有当字典rehash时才会轮询两张hash表 否则只考察老hash表
     for (table = 0; table <= 1; table++) {
         // key所在的数组脚标位置
-        idx = hash & d->ht[table].sizemask;
+        idx = hash & d->ht[table].sizemask; // 位运算计算key的hash桶脚标
         /* Search if this slot does not already contain the given key */
         // 遍历单链表找到key
         he = d->ht[table].table[idx];
         while(he) {
             if (key==he->key || dictCompareKeys(d, key, he->key)) {
-                if (existing) *existing = he; // 存在key 标识这个key的键值对hash节点
+                if (existing) *existing = he; // 要找的key已经存在了 返回-1标识key已经存在 并把existing指针指向已经存在的键值对
                 return -1;
             }
             he = he->next;

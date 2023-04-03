@@ -123,7 +123,7 @@ typedef struct dictIterator {
     // nextEntry 标识下一个节点
     dictEntry *entry, *nextEntry;
     /* unsafe iterator fingerprint for misuse detection. */
-    // 自带呢当前状态签名 64位hash值
+    // 字典dict当前状态签名 64位hash值
     long long fingerprint;
 } dictIterator;
 

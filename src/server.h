@@ -504,10 +504,15 @@ typedef enum {
 /* A redis object, that is a type able to hold a string / list / set */
 
 /* The actual Redis Object */
+// 字符串
 #define OBJ_STRING 0    /* String object. */
+// 列表
 #define OBJ_LIST 1      /* List object. */
+// 集合
 #define OBJ_SET 2       /* Set object. */
+// 有序集合
 #define OBJ_ZSET 3      /* Sorted set object. */
+// 哈希表
 #define OBJ_HASH 4      /* Hash object. */
 
 /* The "module" object type is a special one that signals that the object
@@ -671,12 +676,17 @@ typedef struct RedisModuleDigest {
 #define OBJ_STATIC_REFCOUNT (INT_MAX-1) /* Object allocated in the stack. */
 #define OBJ_FIRST_SPECIAL_REFCOUNT OBJ_STATIC_REFCOUNT
 typedef struct redisObject {
+    // 数据类型
     unsigned type:4;
+    // 数据编码方式
     unsigned encoding:4;
+    // 内存淘汰策略
     unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or
                             * LFU data (least significant 8 bits frequency
                             * and most significant 16 bits access time). */
+    // 数据的引用计数
     int refcount;
+    // 数据
     void *ptr;
 } robj;
 
@@ -1710,14 +1720,15 @@ typedef struct {
  * hashes involves both fields and values. Because it is possible that
  * not both are required, store pointers in the iterator to avoid
  * unnecessary memory allocation for fields/values. */
+// redisObject数据类型是OBJ_HASH 迭代器
 typedef struct {
-    robj *subject;
-    int encoding;
+    robj *subject; // 维护redisObject实例
+    int encoding; // redisObject的数据编码类型
 
-    unsigned char *fptr, *vptr;
+    unsigned char *fptr, *vptr; // 编码方式是OBJ_ENCODING_ZIPLIST时使用 ziplist中的entry存放的是[key, value]键值对 也就是步进值为2 依次存放hash数据类型的key和value
 
-    dictIterator *di;
-    dictEntry *de;
+    dictIterator *di; // redisObject编码方式是OBJ_ENCODING_HT时使用dict的迭代器
+    dictEntry *de; // dict编码方式下迭代器的next元素 即entry节点
 } hashTypeIterator;
 
 #include "stream.h"  /* Stream data type header file. */

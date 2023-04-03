@@ -789,6 +789,10 @@ static inline int zipEntrySafe(unsigned char* zl, size_t zlbytes, unsigned char 
 }
 
 /* Return the total number of bytes used by the entry pointed to by 'p'. */
+// @param zl ziplist实例
+// @param albytes ziplist的字段zlbytes
+// @param p 指向ziplist的entry节点
+// @return p指向的这个entry节点的内存大小
 static inline unsigned int zipRawEntryLengthSafe(unsigned char* zl, size_t zlbytes, unsigned char *p) {
     zlentry e;
     assert(zipEntrySafe(zl, zlbytes, p, &e, 0));
@@ -796,6 +800,8 @@ static inline unsigned int zipRawEntryLengthSafe(unsigned char* zl, size_t zlbyt
 }
 
 /* Return the total number of bytes used by the entry pointed to by 'p'. */
+// @param p 指向entry节点
+// @return entry节点的空间大小(几个字节)
 static inline unsigned int zipRawEntryLength(unsigned char *p) {
     zlentry e;
     zipEntry(p, &e);
@@ -1290,13 +1296,19 @@ unsigned char *ziplistPush(unsigned char *zl, unsigned char *s, unsigned int sle
 /* Returns an offset to use for iterating with ziplistNext. When the given
  * index is negative, the list is traversed back to front. When the list
  * doesn't contain an element at the provided index, NULL is returned. */
+// 按照entry的相对脚标查找
+// @param zl ziplist实例
+// @param index 给定的脚标位置
+//                           负数 从后往前找
+//                           非负数 从前往后找脚标位置
 unsigned char *ziplistIndex(unsigned char *zl, int index) {
     unsigned char *p;
     unsigned int prevlensize, prevlen = 0;
+    // 取出ziplist中zlbytes字段的值
     size_t zlbytes = intrev32ifbe(ZIPLIST_BYTES(zl));
-    if (index < 0) {
+    if (index < 0) { // 从后往前找
         index = (-index)-1;
-        p = ZIPLIST_ENTRY_TAIL(zl);
+        p = ZIPLIST_ENTRY_TAIL(zl); // 最后一个entry地址
         if (p[0] != ZIP_END) {
             /* No need for "safe" check: when going backwards, we know the header
              * we're parsing is in the range, we just need to assert (below) that
@@ -1308,16 +1320,18 @@ unsigned char *ziplistIndex(unsigned char *zl, int index) {
                 ZIP_DECODE_PREVLEN(p, prevlensize, prevlen);
             }
         }
-    } else {
-        p = ZIPLIST_ENTRY_HEAD(zl);
+    } else { // 从前往后找
+        p = ZIPLIST_ENTRY_HEAD(zl); // 首个entry地址
         while (index--) {
             /* Use the "safe" length: When we go forward, we need to be careful
              * not to decode an entry header if it's past the ziplist allocation. */
+            // p指向的entry节点的大小 指针后移到下一个entry节点
             p += zipRawEntryLengthSafe(zl, zlbytes, p);
             if (p[0] == ZIP_END)
                 break;
         }
     }
+    // ziplist是空的 没有entry节点
     if (p[0] == ZIP_END || index > 0)
         return NULL;
     zipAssertValidEntry(zl, zlbytes, p);
@@ -1330,19 +1344,22 @@ unsigned char *ziplistIndex(unsigned char *zl, int index) {
  * p is the pointer to the current element
  *
  * The element after 'p' is returned, otherwise NULL if we are at the end. */
+// @param zl ziplist实例
+// @param p entry节点
 unsigned char *ziplistNext(unsigned char *zl, unsigned char *p) {
     ((void) zl);
+    // ziplist的blbytes字段值
     size_t zlbytes = intrev32ifbe(ZIPLIST_BYTES(zl));
 
     /* "p" could be equal to ZIP_END, caused by ziplistDelete,
      * and we should return NULL. Otherwise, we should return NULL
      * when the *next* element is ZIP_END (there is no next entry). */
-    if (p[0] == ZIP_END) {
+    if (p[0] == ZIP_END) { // p已经指向了end 之后没有entry节点了
         return NULL;
     }
 
-    p += zipRawEntryLength(p);
-    if (p[0] == ZIP_END) {
+    p += zipRawEntryLength(p); // 指针后移到下一个entry节点
+    if (p[0] == ZIP_END) { // 刚才的p已经是ziplist中的最后一个entry了 现在指向了end节点
         return NULL;
     }
 

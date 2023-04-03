@@ -37,17 +37,23 @@
 /* Check the length of a number of objects to see if we need to convert a
  * ziplist to a real hash. Note that we only check string encoded objects
  * as their string length can be queried in constant time. */
+// redisObject的ziplist编码转换成zipmap
+// @param argv 客户端命令行参数 比如 hset myhash name dingrui
+// @param [start...end]是键值对
 void hashTypeTryConversion(robj *o, robj **argv, int start, int end) {
     int i;
+    // 统计所有字符串的长度
     size_t sum = 0;
 
+    // 校验redisObject的编码
     if (o->encoding != OBJ_ENCODING_ZIPLIST) return;
 
     for (i = start; i <= end; i++) {
         if (!sdsEncodedObject(argv[i]))
             continue;
+        // 字符串长度
         size_t len = sdslen(argv[i]->ptr);
-        if (len > server.hash_max_ziplist_value) {
+        if (len > server.hash_max_ziplist_value) { //
             hashTypeConvert(o, OBJ_ENCODING_HT);
             return;
         }
@@ -97,9 +103,9 @@ sds hashTypeGetFromHashTable(robj *o, sds field) {
 
     serverAssert(o->encoding == OBJ_ENCODING_HT);
 
-    de = dictFind(o->ptr, field);
+    de = dictFind(o->ptr, field); // 查询dict中的entry
     if (de == NULL) return NULL;
-    return dictGetVal(de);
+    return dictGetVal(de); // entry中的value
 }
 
 /* Higher level function of hashTypeGet*() that returns the hash value
@@ -323,15 +329,23 @@ unsigned long hashTypeLength(const robj *o) {
     return length;
 }
 
+// redisObject的hash表类型数据的迭代器
+// redisObject的数据类型是OBJ_HASH
+// @param subect redisObject实例
+// @return redisObject的OBJ_HASH类型数据的迭代器
 hashTypeIterator *hashTypeInitIterator(robj *subject) {
+    // redisObject的迭代器
     hashTypeIterator *hi = zmalloc(sizeof(hashTypeIterator));
+    // 维护redisObject的信息
+    // subject字段 redisObject实例
     hi->subject = subject;
+    // encoding字段 redisObject的编码方式
     hi->encoding = subject->encoding;
 
-    if (hi->encoding == OBJ_ENCODING_ZIPLIST) {
-        hi->fptr = NULL;
-        hi->vptr = NULL;
-    } else if (hi->encoding == OBJ_ENCODING_HT) {
+    if (hi->encoding == OBJ_ENCODING_ZIPLIST) { // redisObject编码使用的是ziplist
+        hi->fptr = NULL; // ziplist编码中键值对的key
+        hi->vptr = NULL; // ziplist编码中键值对的value
+    } else if (hi->encoding == OBJ_ENCODING_HT) { // redisObject编码使用的是dict
         hi->di = dictGetIterator(subject->ptr);
     } else {
         serverPanic("Unknown hash encoding");
@@ -347,35 +361,45 @@ void hashTypeReleaseIterator(hashTypeIterator *hi) {
 
 /* Move to the next entry in the hash. Return C_OK when the next entry
  * could be found and C_ERR when the iterator reaches the end. */
+// 迭代器的迭代操作
+// @param hi redisObject数据类型是hash时候的迭代器
+// @return 操作码 0-标识迭代器有next元素
+//               1-标识迭代器遍历完了 没有了next元素
 int hashTypeNext(hashTypeIterator *hi) {
-    if (hi->encoding == OBJ_ENCODING_ZIPLIST) {
+    if (hi->encoding == OBJ_ENCODING_ZIPLIST) { // redisObject编码方式为ziplist
         unsigned char *zl;
         unsigned char *fptr, *vptr;
 
-        zl = hi->subject->ptr;
-        fptr = hi->fptr;
-        vptr = hi->vptr;
+        zl = hi->subject->ptr; // ziplist实例
+        fptr = hi->fptr; // ziplist中存放key的entry节点
+        vptr = hi->vptr; // ziplist中存放value的entry节点
 
-        if (fptr == NULL) {
+        // ziplist的迭代器一旦开始工作 首个元素一定维护在迭代器实例中 为空说明迭代器初始化之后还没尽心过元素的遍历
+        if (fptr == NULL) { // 迭代器刚初始化完
             /* Initialize cursor */
             serverAssert(vptr == NULL);
+            // ziplist中的首个entry就是要找的key
             fptr = ziplistIndex(zl, 0);
         } else {
             /* Advance cursor */
             serverAssert(vptr != NULL);
+            // 上一次迭代的value的后继节点就是这次迭代的key
             fptr = ziplistNext(zl, vptr);
         }
         if (fptr == NULL) return C_ERR;
 
         /* Grab pointer to the value (fptr points to the field) */
+        // 这次迭代的key是fptr指向的entry节点
+        // 那么value就是fptr的后继节点
         vptr = ziplistNext(zl, fptr);
         serverAssert(vptr != NULL);
 
         /* fptr, vptr now point to the first or next pair */
+        // 将迭代器要迭代的[key, value]键值对维护在迭代器的字段中
         hi->fptr = fptr;
         hi->vptr = vptr;
-    } else if (hi->encoding == OBJ_ENCODING_HT) {
-        if ((hi->de = dictNext(hi->di)) == NULL) return C_ERR;
+    } else if (hi->encoding == OBJ_ENCODING_HT) { // redisObject编码方式为dict
+        if ((hi->de = dictNext(hi->di)) == NULL) return C_ERR; // 直接使用dict中的迭代器实现 de指向本次要迭代的[key, value]entry节点
     } else {
         serverPanic("Unknown hash encoding");
     }
@@ -450,6 +474,7 @@ sds hashTypeCurrentObjectNewSds(hashTypeIterator *hi, int what) {
     return sdsfromlonglong(vll);
 }
 
+// @param key
 robj *hashTypeLookupWriteOrCreate(client *c, robj *key) {
     robj *o = lookupKeyWrite(c->db,key);
     if (checkType(c,o,OBJ_HASH)) return NULL;
@@ -461,6 +486,8 @@ robj *hashTypeLookupWriteOrCreate(client *c, robj *key) {
     return o;
 }
 
+// 编码类型转换 ziplist->dict
+// @param enc 新的编码类型 即dict
 void hashTypeConvertZiplist(robj *o, int enc) {
     serverAssert(o->encoding == OBJ_ENCODING_ZIPLIST);
 
@@ -472,10 +499,13 @@ void hashTypeConvertZiplist(robj *o, int enc) {
         dict *dict;
         int ret;
 
+        // redisObject的数据类型是OBJ_HASH 其编码类型只有两种 OBJ_ENCODING_ZIPLIST或者OBJ_ENCODING_HT
+        // 那么这个地方的对应底层数据结构就是ziplist的迭代器
         hi = hashTypeInitIterator(o);
+        // 初始化dict实例
         dict = dictCreate(&hashDictType, NULL);
 
-        while (hashTypeNext(hi) != C_ERR) {
+        while (hashTypeNext(hi) != C_ERR) { // 迭代器遍历ziplist的数据
             sds key, value;
 
             key = hashTypeCurrentObjectNewSds(hi,OBJ_HASH_KEY);
@@ -488,14 +518,17 @@ void hashTypeConvertZiplist(robj *o, int enc) {
             }
         }
         hashTypeReleaseIterator(hi);
-        zfree(o->ptr);
-        o->encoding = OBJ_ENCODING_HT;
-        o->ptr = dict;
+        zfree(o->ptr); // 数据原来的编码方式为OBJ_ENCODING_ZIPLIST 释放内存
+        o->encoding = OBJ_ENCODING_HT; // redisObject数据新的编码方式
+        o->ptr = dict; // 数据新的编码方式为OBJ_ENCODING_HT 数据内容
     } else {
         serverPanic("Unknown hash encoding");
     }
 }
 
+// 编码类型转换
+// ziplist->zipmap
+// @param enc 新的编码类型
 void hashTypeConvert(robj *o, int enc) {
     if (o->encoding == OBJ_ENCODING_ZIPLIST) {
         hashTypeConvertZiplist(o, enc);
@@ -656,15 +689,19 @@ void hsetnxCommand(client *c) {
     }
 }
 
+// hset命令
+// 比如客户端命令如下
+// hset myhash name dingrui
 void hsetCommand(client *c) {
     int i, created = 0;
     robj *o;
 
-    if ((c->argc % 2) == 1) {
+    if ((c->argc % 2) == 1) { // hset命令校验
         addReplyErrorFormat(c,"wrong number of arguments for '%s' command",c->cmd->name);
         return;
     }
 
+    // argv[1] 是key
     if ((o = hashTypeLookupWriteOrCreate(c,c->argv[1])) == NULL) return;
     hashTypeTryConversion(o,c->argv,2,c->argc-1);
 

@@ -670,14 +670,16 @@ long long dictFingerprint(dict *d) {
 }
 
 // 获取字典的非安全模式迭代器
+// @param d dict实例
+// @return 迭代器实例
 dictIterator *dictGetIterator(dict *d)
 {
     // 分配迭代器内存
     dictIterator *iter = zmalloc(sizeof(*iter));
     // 迭代器初始化
     iter->d = d;
-    iter->table = 0;
-    iter->index = -1;
+    iter->table = 0; // 不管是否在rehash中 从旧表开始准没错的
+    iter->index = -1; // 刚初始化出来的迭代器 -1标识还没有遍历过hash桶 也就是说下一次迭代从0号桶开始
     iter->safe = 0; // 迭代过程中不强制要求rehash暂停
     iter->entry = NULL;
     iter->nextEntry = NULL;
@@ -685,6 +687,8 @@ dictIterator *dictGetIterator(dict *d)
 }
 
 // 获取字典的安全模式迭代器
+// @param d dict实例
+// @return 迭代器实例
 dictIterator *dictGetSafeIterator(dict *d) {
     dictIterator *i = dictGetIterator(d);
     // 安全模式的迭代器 在迭代过程中暂停rehash
@@ -692,7 +696,9 @@ dictIterator *dictGetSafeIterator(dict *d) {
     return i;
 }
 
-// 下一个节点
+// 通过迭代器遍历节点
+// @param iter 迭代器
+// @return entry键值对
 dictEntry *dictNext(dictIterator *iter)
 {
     while (1) {

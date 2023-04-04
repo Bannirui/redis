@@ -339,7 +339,7 @@ typedef struct zlentry {
                                     the entry encoding. However for 4 bits
                                     immediate integers this can assume a range
                                     of values and must be range-checked. */
-    // 数据节点的数据(包含头部信息)以字符串形式保存
+    // 指向的entry节点
     unsigned char *p;            /* Pointer to the very start of the entry, that
                                     is, this points to prev-entry-len field. */
 } zlentry;
@@ -353,6 +353,11 @@ typedef struct zlentry {
 
 /* Extract the encoding from the byte pointed by 'ptr' and set it into
  * 'encoding' field of the zlentry structure. */
+/**
+ * @brief ptr指向entry的encoding字段 把entry的encoding的高2位编码信息写到zlentry的encoding字段中
+ * @param ptr 指向了entry的encoding字段
+ * @param encoding 代指zlentry的encoding字段
+ */
 #define ZIP_ENTRY_ENCODING(ptr, encoding) do {  \
     (encoding) = ((ptr)[0]); \
     if ((encoding) < ZIP_STR_MASK) (encoding) &= ZIP_STR_MASK; \
@@ -462,6 +467,13 @@ unsigned int zipStoreEntryEncoding(unsigned char *p, unsigned char encoding, uns
  * variable will hold the number of bytes required to encode the entry
  * length, and the 'len' variable will hold the entry length.
  * On invalid encoding error, lensize is set to 0. */
+/**
+ * @brief entry的encoding以及data-entry写到zlentry的lensize和len字段
+ * @param ptr指向entry的encoding字段地址
+ * @param encoding 代指zlentry的encoding字段
+ * @param lensize 代指zlentry的lensize字段
+ * @param len 代指zlentry的len字段
+ */
 #define ZIP_DECODE_LENGTH(ptr, encoding, lensize, len) do {                    \
     if ((encoding) < ZIP_STR_MASK) {                                           \
         if ((encoding) == ZIP_STR_06B) {                                       \
@@ -542,12 +554,13 @@ unsigned int zipStorePrevEntryLength(unsigned char *p, unsigned int len) {
 
 /* Return the number of bytes used to encode the length of the previous
  * entry. The length is returned by setting the var 'prevlensize'. */
-// 计算前驱节点entry长度的编码
-// 当前entry的第一个字段prevlen
-//                            存储的值<0xfe 说明prevlen就1个字节 存储的就是前驱点占用多少bytes
-//                            存储的值>=0xfe 说明prevlen共5个字节 第1个字节是0xfe标识 后4个字节存储前驱节点占用多少bytes
-// @param ptr 指向entry节点
-// @param prevlensize 前驱节点entry长度的编码
+/**
+ * @brief ptr指向entry中的prevlen字段 将prevlen的编码长度写到zlentry中的prevrawlensize字段
+ *                                  prevlen的值<0xfe 说明prevlen就1个字节 存储的就是前驱点占用多少bytes
+ *                                  prevlen的值>=0xfe 说明prevlen共5个字节 第1个字节是0xfe标识 后4个字节存储前驱节点占用多少bytes
+ * @param ptr 指向entry
+ * @param prevlensize zlentry中的prevrawlensize字段 用来接收entry中prevlen字段的编码长度
+ */
 #define ZIP_DECODE_PREVLENSIZE(ptr, prevlensize) do {                          \
     if ((ptr)[0] < ZIP_BIG_PREVLEN) {                                          \
         (prevlensize) = 1;                                                     \
@@ -563,15 +576,16 @@ unsigned int zipStorePrevEntryLength(unsigned char *p, unsigned int len) {
  * The length of the previous entry is stored in 'prevlen', the number of
  * bytes needed to encode the previous entry length are stored in
  * 'prevlensize'. */
-// 当前entry节点指针ptr
-// @param ptr 指向当前entry的指针
-// @param prevlensize 前驱entry长度编码 即用了多少字节表示前驱节点长度
-//                                    前驱节点长度<255 1个字节表示长度
-//                                    前驱节点长度>=255 5个字节表示长度
-// @param prevlen 前驱entry占用多少字节
-// 先根据当前节点prevlen字段的第一个字节求出前驱节点长度的编码
-// 前驱长度<254bytes prevlen字段占用1字节 存储的内容就是长度
-// 前驱长度>=254bytes prevlen字段占用5字节 后4个字节内容就是长度
+/**
+ * @brief ptr指向entry节点 将entrty中的prevlen字段向zlentry中的prevrawlensize和prevrawlen字段写入
+ * @param ptr 指向entry节点
+ * @param prevlensize zlentry中的prevrawlensize字段 用来接收entry中prevlen字段的编码
+ *                                    prevlen<255 1个字节表示长度 即prevlensize=1
+ *                                    prevlen>=255 5个字节表示长度 即prevlensize=5
+ * @param prevlen zlentry中prevrawlen字段 用来接收entry中prevlen字段的值
+ *                                    prevlen<255 zlentry中prevlen字段值=entry中prevlen字段值
+ *                                    prevlen>=255 zlentry中prevlen字段值=entry中prevlen字段的后4个字节值
+ */
 #define ZIP_DECODE_PREVLEN(ptr, prevlensize, prevlen) do { \
     ZIP_DECODE_PREVLENSIZE(ptr, prevlensize);                                  \
     if ((prevlensize) == 1) {                                                  \
@@ -713,11 +727,20 @@ int64_t zipLoadInteger(unsigned char *p, unsigned char encoding) {
  * will assert that this element is valid, so it can be freely used.
  * Generally functions such ziplistGet assume the input pointer is already
  * validated (since it's the return value of another function). */
+/**
+ * @brief 将p指向的entry信息写到zlentry中
+ * @param p ziplist中entry节点
+ * @param e zlentry
+ */
 static inline void zipEntry(unsigned char *p, zlentry *e) {
+    // entry的prevlen字段写到zlentry的prevrawlensize和prevrawlen字段
     ZIP_DECODE_PREVLEN(p, e->prevrawlensize, e->prevrawlen);
+    // entry的encoding写到zlentry的encoding字段
     ZIP_ENTRY_ENCODING(p + e->prevrawlensize, e->encoding);
+    // entry的encoding以及data-entry写到zlentry的lensize和len字段
     ZIP_DECODE_LENGTH(p + e->prevrawlensize, e->encoding, e->lensize, e->len);
     assert(e->lensize != 0); /* check that encoding was valid. */
+    // 写zlentry的headersize字段
     e->headersize = e->prevrawlensize + e->lensize;
     e->p = p;
 }
@@ -1406,6 +1429,14 @@ unsigned char *ziplistPrev(unsigned char *zl, unsigned char *p) {
  * on the encoding of the entry. '*sstr' is always set to NULL to be able
  * to find out whether the string pointer or the integer value was set.
  * Return 0 if 'p' points to the end of the ziplist, 1 otherwise. */
+/**
+ * @brief
+ * @param p entry地址
+ * @param sstr
+ * @param slen
+ * @param sval
+ * @return 0标识p指向的是ziplist的END节点 否则返回1
+ */
 unsigned int ziplistGet(unsigned char *p, unsigned char **sstr, unsigned int *slen, long long *sval) {
     zlentry entry;
     if (p == NULL || p[0] == ZIP_END) return 0;

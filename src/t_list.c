@@ -40,10 +40,17 @@
  *
  * There is no need for the caller to increment the refcount of 'value' as
  * the function takes care of it if needed. */
+/**
+ * @brief OBJ_LIST 列表类型数据类型 添加元素
+ * @param subject redisObject实例
+ * @param value 要添加的元素
+ * @param where 0标识头插 否则标识尾插
+ */
 void listTypePush(robj *subject, robj *value, int where) {
-    if (subject->encoding == OBJ_ENCODING_QUICKLIST) {
+    if (subject->encoding == OBJ_ENCODING_QUICKLIST) { // 编码类型 说明列表类型只有quicklist这一种编码方式 而quicklist的节点又通过ziplist进行数据存储
+        // 元素进行头插还是尾插
         int pos = (where == LIST_HEAD) ? QUICKLIST_HEAD : QUICKLIST_TAIL;
-        if (value->encoding == OBJ_ENCODING_INT) {
+        if (value->encoding == OBJ_ENCODING_INT) { // 整数转字符串
             char buf[32];
             ll2string(buf, 32, (long)value->ptr);
             quicklistPush(subject->ptr, buf, strlen(buf), pos);
@@ -59,12 +66,18 @@ void *listPopSaver(unsigned char *data, unsigned int sz) {
     return createStringObject((char*)data,sz);
 }
 
+/**
+ * @brief OBJ_LIST列表数据类型
+ * @param subject redisObject实例
+ * @param where 标识方向 0标识从head弹出 否则从tail弹出
+ * @return 弹出的元素
+ */
 robj *listTypePop(robj *subject, int where) {
     long long vlong;
     robj *value = NULL;
-
+    // 从列表头弹出元素还是列表尾弹出元素
     int ql_where = where == LIST_HEAD ? QUICKLIST_HEAD : QUICKLIST_TAIL;
-    if (subject->encoding == OBJ_ENCODING_QUICKLIST) {
+    if (subject->encoding == OBJ_ENCODING_QUICKLIST) { // OBJ_LIST列表类型数据只支持quicklist的编码方式
         if (quicklistPopCustom(subject->ptr, ql_where, (unsigned char **)&value,
                                NULL, &vlong, listPopSaver)) {
             if (!value)

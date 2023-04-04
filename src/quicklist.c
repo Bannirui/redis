@@ -1503,6 +1503,18 @@ void quicklistRotate(quicklist *quicklist) {
  * Return value of 0 means no elements available.
  * Return value of 1 means check 'data' and 'sval' for values.
  * If 'data' is set, use 'data' and 'sz'.  Otherwise, use 'sval'. */
+/**
+ * @brief
+ * @param quicklist
+ * @param where 方向 0标识从列表头出元素 1标识从列表尾出元素
+ * @param data 弹出的列表元素不是整数 通过saver函数放到data上
+ * @param sz
+ * @param sval 弹出的类标元素是整数 直接将结果放到sval上
+ * @param saver
+ * @return 0表示列表为空没有元素
+ *         1表示列表有元素弹出 整数就放在了sval上
+ *                          不是整数就放在了data上
+ */
 int quicklistPopCustom(quicklist *quicklist, int where, unsigned char **data,
                        unsigned int *sz, long long *sval,
                        void *(*saver)(unsigned char *data, unsigned int sz)) {
@@ -1510,11 +1522,16 @@ int quicklistPopCustom(quicklist *quicklist, int where, unsigned char **data,
     unsigned char *vstr;
     unsigned int vlen;
     long long vlong;
+    /**
+     * 0标识从列表头出元素 找到quicklist的头节点quicklistNode 找到头节点里面的ziplist的HEAD节点entry
+     * 1标识从列表尾出元素 找到quicklist的尾节点quicklistNode 找到尾节点里面的ziplist的TAIL节点entry
+     */
     int pos = (where == QUICKLIST_HEAD) ? 0 : -1;
 
     if (quicklist->count == 0)
-        return 0;
+        return 0; // 列表是空的 没有quicklistNode节点
 
+    // 初始化
     if (data)
         *data = NULL;
     if (sz)
@@ -1523,14 +1540,19 @@ int quicklistPopCustom(quicklist *quicklist, int where, unsigned char **data,
         *sval = -123456789;
 
     quicklistNode *node;
-    if (where == QUICKLIST_HEAD && quicklist->head) {
+    if (where == QUICKLIST_HEAD && quicklist->head) { // 从列表头出元素 找到quicklist的列表头quicklistNode
         node = quicklist->head;
-    } else if (where == QUICKLIST_TAIL && quicklist->tail) {
+    } else if (where == QUICKLIST_TAIL && quicklist->tail) { // 从列表尾出元素 找到quicklist的列表尾quicklistNode
         node = quicklist->tail;
     } else {
         return 0;
     }
 
+    /**
+     * 出列表头元素 就找到ziplist的HEAD节点entry
+     * 出列表尾元素 就找到ziplist的TAIL节点entry
+     * p指向的是ziplist中的entry节点地址
+     */
     p = ziplistIndex(node->zl, pos);
     if (ziplistGet(p, &vstr, &vlen, &vlong)) {
         if (vstr) {

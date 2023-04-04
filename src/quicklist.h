@@ -126,7 +126,11 @@ typedef struct quicklist {
     unsigned long count;        /* total count of all entries in all ziplists */
     // quicklistNode的节点数量
     unsigned long len;          /* number of quicklistNodes */
-    // 16bit 存放list-max-ziplist-size配置 默认-2
+    /**
+     * 16bit
+     * 限制quicklistNode中ziplist的大小 即存放redis.conf配置文件中的list-max-ziplist-size配置
+     * 默认-2
+     */
     int fill : QL_FILL_BITS;              /* fill factor for individual nodes */
     // 16bit 存放list-compress-depth配置 默认0
     unsigned int compress : QL_COMP_BITS; /* depth of end nodes not to compress;0=off */

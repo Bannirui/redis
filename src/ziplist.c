@@ -1048,6 +1048,7 @@ unsigned char *__ziplistDelete(unsigned char *zl, unsigned char *p, unsigned int
 // @param p entry节点 挂到哪个节点之后
 // @param s 内容
 // @param slen 内容长度
+// @return ziplist实例
 unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsigned char *s, unsigned int slen) {
     // 取出ziplist的zlbytes值
     // curlen ziplist的大小
@@ -1287,8 +1288,17 @@ unsigned char *ziplistMerge(unsigned char **first, unsigned char **second) {
     return target;
 }
 
+/**
+ * @brief push的语义是头插还是尾插
+ * @param zl ziplist实例
+ * @param s 元素
+ * @param slen 元素大小 几个字节
+ * @param where 新增元素插入到哪个entry节点之后
+ * @return ziplist实例
+ */
 unsigned char *ziplistPush(unsigned char *zl, unsigned char *s, unsigned int slen, int where) {
     unsigned char *p;
+    // 头插还是尾插
     p = (where == ZIPLIST_HEAD) ? ZIPLIST_ENTRY_HEAD(zl) : ZIPLIST_ENTRY_END(zl);
     return __ziplistInsert(zl,p,s,slen);
 }

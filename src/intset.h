@@ -33,8 +33,11 @@
 #include <stdint.h>
 
 typedef struct intset {
+    // 编码 整数数组中整数的大小编码(16bit\32bit\64bit)
     uint32_t encoding;
+    // 长度 也就是intset集合的整数个数
     uint32_t length;
+    // 实际存储整数的数组 柔性数组
     int8_t contents[];
 } intset;
 

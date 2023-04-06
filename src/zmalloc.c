@@ -246,6 +246,13 @@ void *ztryrealloc_usable(void *ptr, size_t size, size_t *usable) {
 }
 
 /* Reallocate memory and zero it or panic */
+/**
+ * @brief 将ptr指向的数组扩容到size字节大小 成功后返回的指针依然是ptr
+ *        新数组相当于对旧数据的空间追加 包含了旧数组的所有元素数据
+ *        新追加的内存上全部写0
+ * @param ptr 指向要扩容的数组
+ * @param size 要扩容到多大字节
+ */
 void *zrealloc(void *ptr, size_t size) {
     ptr = ztryrealloc_usable(ptr, size, NULL);
     if (!ptr && size != 0) zmalloc_oom_handler(size);

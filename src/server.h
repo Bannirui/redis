@@ -1695,14 +1695,20 @@ typedef struct _redisSortOperation {
 } redisSortOperation;
 
 /* Structure to hold list iteration abstraction. */
+// 加上填充字节 该结构体24byte
 typedef struct {
+    // redisObject实例
     robj *subject;
+    // redisObject的编码方式 列表的编码只有一种 就是quicklist
     unsigned char encoding;
+    // 迭代方向 0标识迭代方向为tail->head 1标识迭代方向为head->tail
     unsigned char direction; /* Iteration direction */
+    // quicklist迭代器
     quicklistIter *iter;
 } listTypeIterator;
 
 /* Structure for an entry while iterating over a list. */
+// 列表类型的数据节点
 typedef struct {
     listTypeIterator *li;
     quicklistEntry entry; /* Entry in quicklist */

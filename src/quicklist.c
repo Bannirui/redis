@@ -1217,15 +1217,23 @@ int quicklistCompare(unsigned char *p1, unsigned char *p2, int p2_len) {
 
 /* Returns a quicklist iterator 'iter'. After the initialization every
  * call to quicklistNext() will return the next element of the quicklist. */
+/**
+ * @brief 创建迭代器
+ * @param quicklist 迭代器归属于quicklist实例
+ * @param direction 迭代器的迭代方向
+ *                  0标识从head->tail
+ *                  1标识从tail->head
+ * @return
+ */
 quicklistIter *quicklistGetIterator(const quicklist *quicklist, int direction) {
     quicklistIter *iter;
 
     iter = zmalloc(sizeof(*iter));
 
-    if (direction == AL_START_HEAD) {
+    if (direction == AL_START_HEAD) { // 0标识迭代器方向 从head->tail
         iter->current = quicklist->head;
         iter->offset = 0;
-    } else if (direction == AL_START_TAIL) {
+    } else if (direction == AL_START_TAIL) { // 1标识迭代器方向 从tail->head
         iter->current = quicklist->tail;
         iter->offset = -1;
     }
@@ -1240,13 +1248,22 @@ quicklistIter *quicklistGetIterator(const quicklist *quicklist, int direction) {
 
 /* Initialize an iterator at a specific offset 'idx' and make the iterator
  * return nodes in 'direction' direction. */
+/**
+ * @brief 创建quicklist迭代器
+ * @param quicklist quicklist实例
+ * @param direction 迭代器的迭代方向
+ *                  0标识迭代方向为quicklist尾->quicklist头
+ *                  1标识迭代方向为quicklist头->quicklist尾
+ * @param idx quicklist的元素脚标为[0...n-1] 从idx元素开始迭代
+ * @return quicklist迭代器
+ */
 quicklistIter *quicklistGetIteratorAtIdx(const quicklist *quicklist,
                                          const int direction,
                                          const long long idx) {
     quicklistEntry entry;
 
-    if (quicklistIndex(quicklist, idx, &entry)) {
-        quicklistIter *base = quicklistGetIterator(quicklist, direction);
+    if (quicklistIndex(quicklist, idx, &entry)) { // 找到了指定idx位置的ziplistEntry 将其封装成quicklistEntry
+        quicklistIter *base = quicklistGetIterator(quicklist, direction); // 创建迭代器
         base->zi = NULL;
         base->current = entry.node;
         base->offset = entry.offset;
@@ -1286,6 +1303,12 @@ void quicklistReleaseIterator(quicklistIter *iter) {
  * Returns 0 when iteration is complete or if iteration not possible.
  * If return value is 0, the contents of 'entry' are not valid.
  */
+/**
+ * @brief 迭代器遍历
+ * @param iter quicklist迭代器
+ * @param entry quicklist迭代器遍历的元素封装到quicklistEntry中
+ * @return
+ */
 int quicklistNext(quicklistIter *iter, quicklistEntry *entry) {
     initEntry(entry);
 
@@ -1305,10 +1328,10 @@ int quicklistNext(quicklistIter *iter, quicklistEntry *entry) {
     unsigned char *(*nextFn)(unsigned char *, unsigned char *) = NULL;
     int offset_update = 0;
 
-    if (!iter->zi) {
+    if (!iter->zi) { // 迭代器中没有维护当前遍历到的ziplistEntry信息 说明是初始化迭代器之后首次执行遍历操作 根据index找到ziplistEntry
         /* If !zi, use current index. */
         quicklistDecompressNodeForUse(iter->current);
-        iter->zi = ziplistIndex(iter->current->zl, iter->offset);
+        iter->zi = ziplistIndex(iter->current->zl, iter->offset); // ziplist中查找到对应的ziplistEntry
     } else {
         /* else, use existing iterator offset and get prev/next as necessary. */
         if (iter->direction == AL_START_HEAD) {
@@ -1325,11 +1348,11 @@ int quicklistNext(quicklistIter *iter, quicklistEntry *entry) {
     entry->zi = iter->zi;
     entry->offset = iter->offset;
 
-    if (iter->zi) {
+    if (iter->zi) { // 读取ziplistEntry元素
         /* Populate value from existing ziplist position */
         ziplistGet(entry->zi, &entry->value, &entry->sz, &entry->longval);
         return 1;
-    } else {
+    } else { // 迭代quicklist的下一个quicklistNode
         /* We ran out of ziplist entries.
          * Pick next node, update offset, then re-run retrieval. */
         quicklistCompress(iter->quicklist, iter->current);
@@ -1394,11 +1417,21 @@ quicklist *quicklistDup(quicklist *orig) {
  *
  * Returns 1 if element found
  * Returns 0 if element not found */
+/**
+ * @brief 查找指定位置的ziplistEntry 将ziplistEntry封装成quicklistEntry
+ * @param quicklist quicklist实例
+ * @param idx quicklist元素脚标[0...n-1] 查找idx脚标的元素
+ * @param entry idx指向的ziplist的entry封装成quicklistEntry
+ * @return 是否存在idx指定的元素
+ *         1标识存在元素
+ *         0标识不存在元素
+ */
 int quicklistIndex(const quicklist *quicklist, const long long idx,
                    quicklistEntry *entry) {
     quicklistNode *n;
-    unsigned long long accum = 0;
-    unsigned long long index;
+    unsigned long long accum = 0; // ziplist中entry节点计数 以quicklistNode为统计单位
+    unsigned long long index; // 要查找的entry节点位置
+    // 方向 正序还是逆序
     int forward = idx < 0 ? 0 : 1; /* < 0 -> reverse, 0+ -> forward */
 
     initEntry(entry);
@@ -1417,7 +1450,7 @@ int quicklistIndex(const quicklist *quicklist, const long long idx,
 
     while (likely(n)) {
         if ((accum + n->count) > index) {
-            break;
+            break; // n是quicklist的quicklistNode 而quicklistNode上挂着一条ziplist 要找的元素就在这条ziplist上
         } else {
             D("Skipping over (%p) %u at accum %lld", (void *)n, n->count,
               accum);
@@ -1433,17 +1466,19 @@ int quicklistIndex(const quicklist *quicklist, const long long idx,
       accum, index, index - accum, (-index) - 1 + accum);
 
     entry->node = n;
-    if (forward) {
+    if (forward) { // 方向 quicklist head->tail
         /* forward = normal head-to-tail offset. */
         entry->offset = index - accum;
-    } else {
+    } else { // 方向 quicklist tail->head
         /* reverse = need negative offset for tail-to-head, so undo
          * the result of the original if (index < 0) above. */
         entry->offset = (-index) - 1 + accum;
     }
 
     quicklistDecompressNodeForUse(entry->node);
+    // 查找到了idx位置的ziplist节点entry
     entry->zi = ziplistIndex(entry->node->zl, entry->offset);
+    // 将ziplist的etnry存储的元素读取出来
     if (!ziplistGet(entry->zi, &entry->value, &entry->sz, &entry->longval))
         assert(0); /* This can happen on corrupt ziplist with fake entry count. */
     /* The caller will use our result, so we don't re-compress here.
@@ -1504,13 +1539,13 @@ void quicklistRotate(quicklist *quicklist) {
  * Return value of 1 means check 'data' and 'sval' for values.
  * If 'data' is set, use 'data' and 'sz'.  Otherwise, use 'sval'. */
 /**
- * @brief
+ * @brief quiklist列表弹出元素
  * @param quicklist
  * @param where 方向 0标识从列表头出元素 1标识从列表尾出元素
- * @param data 弹出的列表元素不是整数 通过saver函数放到data上
- * @param sz
- * @param sval 弹出的类标元素是整数 直接将结果放到sval上
- * @param saver
+ * @param data quicklist弹出的元素是字符串 通过saver函数放到data上
+ * @param sz quicklist弹出的元素是字符串 sz存储的是该字符串的长度
+ * @param sval quicklist弹出的类标元素是整数 sval存储的是该整数的值
+ * @param saver quicklist弹出的元素是字符串 该字符串不是直接放到data上 而是通过调用方传递的函数 该接口的作用是提供了自定义数据返回形式的自由度
  * @return 0表示列表为空没有元素
  *         1表示列表有元素弹出 整数就放在了sval上
  *                          不是整数就放在了data上
@@ -1519,9 +1554,9 @@ int quicklistPopCustom(quicklist *quicklist, int where, unsigned char **data,
                        unsigned int *sz, long long *sval,
                        void *(*saver)(unsigned char *data, unsigned int sz)) {
     unsigned char *p;
-    unsigned char *vstr;
-    unsigned int vlen;
-    long long vlong;
+    unsigned char *vstr; // 列表元素存储的是字符串 缓存该字符串
+    unsigned int vlen; // 列表元素存储的是字符串 缓存该字符串的长度
+    long long vlong; // 列表元素存储的是整数 缓存该整数的值
     /**
      * 0标识从列表头出元素 找到quicklist的头节点quicklistNode 找到头节点里面的ziplist的HEAD节点entry
      * 1标识从列表尾出元素 找到quicklist的尾节点quicklistNode 找到尾节点里面的ziplist的TAIL节点entry
@@ -1555,12 +1590,13 @@ int quicklistPopCustom(quicklist *quicklist, int where, unsigned char **data,
      */
     p = ziplistIndex(node->zl, pos);
     if (ziplistGet(p, &vstr, &vlen, &vlong)) {
-        if (vstr) {
+        // 将p指向的entry节点的元素读取出来
+        if (vstr) { // ziplist的entry存储的是字符串
             if (data)
                 *data = saver(vstr, vlen);
             if (sz)
                 *sz = vlen;
-        } else {
+        } else { // ziplist的entry存储的是整数
             if (data)
                 *data = NULL;
             if (sval)
@@ -1573,6 +1609,12 @@ int quicklistPopCustom(quicklist *quicklist, int where, unsigned char **data,
 }
 
 /* Return a malloc'd copy of data passed in */
+/**
+ * @brief 拷贝字符串data
+ * @param data 字符串的字符数组首元素地址
+ * @param sz 字符串长度
+ * @return
+ */
 REDIS_STATIC void *_quicklistSaver(unsigned char *data, unsigned int sz) {
     unsigned char *vstr;
     if (data) {
@@ -1586,6 +1628,16 @@ REDIS_STATIC void *_quicklistSaver(unsigned char *data, unsigned int sz) {
 /* Default pop function
  *
  * Returns malloc'd value from quicklist */
+/**
+ * @brief 从quicklist列表pop元素
+ * @param quicklist 从quicklist实例中pop元素
+ * @param where 只支持2个方向pop 0标识从列表头pop元素 否则标识从列表尾pop元素
+ * @param data 列表pop出来的元素是字符串 以字符数组形式存储该字符串
+ * @param sz 列表pop出来的元素是字符串 存储该字符串的长度
+ * @param slong 列表pop出来的元素是整数 存储该整数
+ * @return 0表示列表为空没有元素
+ *         1表示列表有元素弹出
+ */
 int quicklistPop(quicklist *quicklist, int where, unsigned char **data,
                  unsigned int *sz, long long *slong) {
     unsigned char *vstr;
@@ -1593,6 +1645,14 @@ int quicklistPop(quicklist *quicklist, int where, unsigned char **data,
     long long vlong;
     if (quicklist->count == 0)
         return 0;
+    /**
+     * 从quicklist列表弹出元素
+     *   - 弹出的是字符串
+     *     - vstr存储的是字符数组地址
+     *     - vlen存储的是字符串长度
+     *   - 弹出的是整数
+     *     - vlong存储的是该整数
+     */
     int ret = quicklistPopCustom(quicklist, where, &vstr, &vlen, &vlong,
                                  _quicklistSaver);
     if (data)

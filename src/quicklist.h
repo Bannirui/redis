@@ -142,19 +142,34 @@ typedef struct quicklist {
 
 typedef struct quicklistIter {
     const quicklist *quicklist;
+    // 迭代器指向的quicklistNode
     quicklistNode *current;
+    // 迭代器指向的ziplistEntry
     unsigned char *zi;
+    // 迭代器指向的ziplistEntry在ziplist中的位置
     long offset; /* offset in current ziplist */
+    // 迭代器迭代方向 0标识head->tail 1标识tail->head
     int direction;
 } quicklistIter;
 
+// quicklist给元素抽象的节点
+// 相当于quicklistNode是物理节点 quicklistEntry是虚拟节点
 typedef struct quicklistEntry {
+    // quicklist实例 标识entry节点归属于哪个quicklist
     const quicklist *quicklist;
+    // quicklist有很多quicklistNode 标识entry归属于哪个node
     quicklistNode *node;
+    // 在ziplist上指向的entry节点
     unsigned char *zi;
-    unsigned char *value;
-    long long longval;
-    unsigned int sz;
+    /**
+     * value longval sz 这3个字段用来存储ziplisg上节点entry中存放的元素
+     *   - 元素是字符串时 用value和sz这2个字段表达
+     *   - 元素是整数时 用longval这个字段表达
+     */
+    unsigned char *value; // ziplist上entry编码是字符串时 字符串的字符数组形式的地址
+    long long longval; // ziplist上entry编码是整数时 整数的值
+    unsigned int sz; // ziplist上entry编码是字符串时 字符串的长度
+    // 在quicklistNode上ziplist的位置 ziplist有entry节点[0...n-1] 当前指向的entry的位置在offset
     int offset;
 } quicklistEntry;
 

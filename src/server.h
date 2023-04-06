@@ -1695,6 +1695,7 @@ typedef struct _redisSortOperation {
 } redisSortOperation;
 
 /* Structure to hold list iteration abstraction. */
+// list列表迭代器
 // 加上填充字节 该结构体24byte
 typedef struct {
     // redisObject实例
@@ -1708,17 +1709,23 @@ typedef struct {
 } listTypeIterator;
 
 /* Structure for an entry while iterating over a list. */
-// 列表类型的数据节点
+// list列表的数据节点
 typedef struct {
     listTypeIterator *li;
     quicklistEntry entry; /* Entry in quicklist */
 } listTypeEntry;
 
 /* Structure to hold set iteration abstraction. */
+// set集合迭代器
+// 24byte
 typedef struct {
+    // 维护redisObject实例
     robj *subject;
+    // redisObject数据编码类型
     int encoding;
+    // intset编码方式时使用intset迭代
     int ii; /* intset iterator */
+    // dict编码方式时使用dict迭代器
     dictIterator *di;
 } setTypeIterator;
 
@@ -1726,7 +1733,7 @@ typedef struct {
  * hashes involves both fields and values. Because it is possible that
  * not both are required, store pointers in the iterator to avoid
  * unnecessary memory allocation for fields/values. */
-// redisObject数据类型是OBJ_HASH 迭代器
+// hash哈希迭代器
 typedef struct {
     robj *subject; // 维护redisObject实例
     int encoding; // redisObject的数据编码类型

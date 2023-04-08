@@ -1004,19 +1004,32 @@ struct sharedObjectsStruct {
 };
 
 /* ZSETs use a specialized version of Skiplists */
+// 跳表节点
 typedef struct zskiplistNode {
+    // 保存节点信息
     sds ele;
+    // 节点分数 按照分数排序
     double score;
+    // 后退指针 只有第1层有效
     struct zskiplistNode *backward;
+    // 维护着跳表节点每一层的前进指针
     struct zskiplistLevel {
-        struct zskiplistNode *forward;
-        unsigned long span;
-    } level[];
+        struct zskiplistNode *forward; // 各层的前进指针
+        unsigned long span; // 与下一个跳表节点的间隔
+    } level[]; // 柔性数组 节点层高为n 则该数组长度为n 表示层数为[1...n]
 } zskiplistNode;
 
+// 跳表
+// 包含对齐填充 32byte
 typedef struct zskiplist {
+    /**
+     * 跳表头节点和跳表尾节点
+     * 跳表的头节点作用是哨兵节点
+     */
     struct zskiplistNode *header, *tail;
+    // 跳表长度
     unsigned long length;
+    // 跳表层高 跳表所有节点层高的最大值 [1...32] 初始化的时候为1
     int level;
 } zskiplist;
 

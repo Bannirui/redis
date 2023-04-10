@@ -399,6 +399,15 @@ void decrRefCountVoid(void *o) {
     decrRefCount(o);
 }
 
+/**
+ * @brief 数据类型校验
+ * @param c
+ * @param o redisObject实例
+ * @param type 期待的数据类型
+ * @return 操作标识
+ *         1标识没有通过数据类型校验
+ *         0标识通过数据类型校验
+ */
 int checkType(client *c, robj *o, int type) {
     /* A NULL is considered an empty key */
     if (o && o->type != type) {
@@ -435,6 +444,17 @@ void trimStringObjectIfNeeded(robj *o) {
 }
 
 /* Try to encode a string object in order to save space */
+/**
+ * @brief 对字符串sds进行内存压缩
+ *          - 字符串sds压缩成int类型
+ *          - RAW编码的string压缩成EMBSTR编码
+ *        从函数的实现上也可以看出sds的编码方式和优先级选择
+ *          - 字符串长度区间 [1...20] 可以转换成整数的 用int编码
+ *          - 字符串长度区间 [1...44] 使用EMBSTR编码
+ *          - 字符串长度区间 [45...] 使用RAW编码
+ * @param o
+ * @return 如果可以进行类型压缩 就返回新编码的数据
+ */
 robj *tryObjectEncoding(robj *o) {
     long value;
     sds s = o->ptr;
@@ -444,11 +464,17 @@ robj *tryObjectEncoding(robj *o) {
      * in this function. Other types use encoded memory efficient
      * representations but are handled by the commands implementing
      * the type. */
+    // 只对字符串类型的数据尝试压缩
     serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
 
     /* We try some specialized encoding only for objects that are
      * RAW or EMBSTR encoded, in other words objects that are still
      * in represented by an actually array of chars. */
+    /**
+     * 尝试压缩压缩内存
+     *   - string压缩成int
+     *   - RAW的string压缩成EMBSTR
+     */
     if (!sdsEncodedObject(o)) return o;
 
     /* It's not safe to encode shared objects: shared objects can be shared
@@ -460,6 +486,11 @@ robj *tryObjectEncoding(robj *o) {
      * Note that we are sure that a string larger than 20 chars is not
      * representable as a 32 nor 64 bit integer. */
     len = sdslen(s);
+    /**
+     * 整数类型是通过64bit的long来表现的
+     * 那么能够表现的最大值就是2^64-1=1.74*10^19
+     * 也就是说整数最多也就20位
+     */
     if (len <= 20 && string2l(s,len,&value)) {
         /* This object is encodable as a long. Try to use a shared object.
          * Note that we avoid using shared integers when maxmemory is used
@@ -490,7 +521,7 @@ robj *tryObjectEncoding(robj *o) {
      * try the EMBSTR encoding which is more efficient.
      * In this representation the object and the SDS string are allocated
      * in the same chunk of memory to save space and cache misses. */
-    if (len <= OBJ_ENCODING_EMBSTR_SIZE_LIMIT) {
+    if (len <= OBJ_ENCODING_EMBSTR_SIZE_LIMIT) { // 字符串长度<=44的尝试用EMBSTR编码
         robj *emb;
 
         if (o->encoding == OBJ_ENCODING_EMBSTR) return o;

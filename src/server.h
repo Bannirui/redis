@@ -718,8 +718,11 @@ typedef struct clientReplyBlock {
 /* Redis database representation. There are multiple databases identified
  * by integers from 0 (the default database) up to the max configured
  * database. The database number is the 'id' field in the structure. */
+// redis的内存数据库
 typedef struct redisDb {
+    // 全局字典
     dict *dict;                 /* The keyspace for this DB */
+    // 过期字典
     dict *expires;              /* Timeout of keys with a timeout set */
     dict *blocking_keys;        /* Keys with clients waiting for data (BLPOP)*/
     dict *ready_keys;           /* Blocked keys that received a PUSH */
@@ -1766,6 +1769,7 @@ typedef struct {
  * Extern declarations
  *----------------------------------------------------------------------------*/
 
+// 创建了redisServer实例
 extern struct redisServer server;
 extern struct sharedObjectsStruct shared;
 extern dictType objectKeyPointerValueDictType;

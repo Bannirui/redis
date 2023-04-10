@@ -41,7 +41,7 @@
  * There is no need for the caller to increment the refcount of 'value' as
  * the function takes care of it if needed. */
 /**
- * @brief OBJ_LIST 列表类型数据类型 添加元素
+ * @brief 向列表中添加元素
  * @param subject redisObject实例
  * @param value 要添加的元素
  * @param where 0标识头插 否则标识尾插
@@ -67,7 +67,7 @@ void *listPopSaver(unsigned char *data, unsigned int sz) {
 }
 
 /**
- * @brief OBJ_LIST列表数据类型
+ * @brief 从列表中删除元素
  * @param subject redisObject实例
  * @param where 标识方向 0标识从head弹出 否则从tail弹出
  * @return 弹出的元素被加工成了redisObject类型
@@ -273,6 +273,12 @@ robj *listTypeDup(robj *o) {
 
 /* Implements LPUSH/RPUSH/LPUSHX/RPUSHX. 
  * 'xx': push if key exists. */
+/**
+ * @brief push
+ * @param c
+ * @param where
+ * @param xx 全局hash表中存在列表才执行元素插入的操作
+ */
 void pushGenericCommand(client *c, int where, int xx) {
     int j;
 
@@ -310,21 +316,37 @@ void pushGenericCommand(client *c, int where, int xx) {
 }
 
 /* LPUSH <key> <element> [<element> ...] */
+/**
+ * @brief 从列表左端插入元素
+ * @param c
+ */
 void lpushCommand(client *c) {
     pushGenericCommand(c,LIST_HEAD,0);
 }
 
 /* RPUSH <key> <element> [<element> ...] */
+/**
+ * @brief 从列表右端插入元素
+ * @param c
+ */
 void rpushCommand(client *c) {
     pushGenericCommand(c,LIST_TAIL,0);
 }
 
 /* LPUSHX <key> <element> [<element> ...] */
+/**
+ * @brief 插入元素的前提是列表得存在
+ * @param c
+ */
 void lpushxCommand(client *c) {
     pushGenericCommand(c,LIST_HEAD,1);
 }
 
 /* RPUSH <key> <element> [<element> ...] */
+/**
+ * @brief 插入元素的前提是列表得存在
+ * @param c
+ */
 void rpushxCommand(client *c) {
     pushGenericCommand(c,LIST_TAIL,1);
 }
@@ -380,6 +402,10 @@ void linsertCommand(client *c) {
 }
 
 /* LLEN <key> */
+/**
+ * @brief 列表长度
+ * @param c
+ */
 void llenCommand(client *c) {
     robj *o = lookupKeyReadOrReply(c,c->argv[1],shared.czero);
     if (o == NULL || checkType(c,o,OBJ_LIST)) return;

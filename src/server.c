@@ -2629,6 +2629,9 @@ void createSharedObjects(void) {
     shared.maxstring = sdsnew("maxstring");
 }
 
+/**
+ * @brief 初始化server配置 即填充redisServer实例中的部分字段
+ */
 void initServerConfig(void) {
     int j;
 
@@ -2736,6 +2739,7 @@ void initServerConfig(void) {
     /* Command table -- we initialize it here as it is part of the
      * initial configuration, since command names may be changed via
      * redis.conf using the rename-command directive. */
+    // 预定义的命令缓存到字典
     server.commands = dictCreate(&commandTableDictType,NULL);
     server.orig_commands = dictCreate(&commandTableDictType,NULL);
     populateCommandTable();
@@ -3187,10 +3191,12 @@ void initServer(void) {
         exit(1);
     }
 
+    // 共享对象
     createSharedObjects();
     adjustOpenFilesLimit();
     const char *clk_msg = monotonicInit();
     serverLog(LL_NOTICE, "monotonic clock: %s", clk_msg);
+    // 创建事件监听器
     server.el = aeCreateEventLoop(server.maxclients+CONFIG_FDSET_INCR);
     if (server.el == NULL) {
         serverLog(LL_WARNING,
@@ -3232,6 +3238,7 @@ void initServer(void) {
     }
 
     /* Create the Redis databases, and initialize other internal state. */
+    // 初始化数据库
     for (j = 0; j < server.dbnum; j++) {
         server.db[j].dict = dictCreate(&dbDictType,NULL);
         server.db[j].expires = dictCreate(&dbExpiresDictType,NULL);
@@ -3353,6 +3360,7 @@ void initServer(void) {
     if (server.cluster_enabled) clusterInit();
     replicationScriptCacheInit();
     scriptingInit(1);
+    // 慢日志初始化
     slowlogInit();
     latencyMonitorInit();
     
@@ -5913,12 +5921,21 @@ void memtest(size_t megabytes, int passes);
 
 /* Returns 1 if there is --sentinel among the arguments or if
  * argv[0] contains "redis-sentinel". */
+/**
+ * @brief 判定redis启动模式是哨兵模式
+ *          - 要么启动的直接就是redis-sentinel可执行文件
+ *          - 要么在启动参数中指定了--sentinel可选项
+ * @param argc 启动参数数量
+ * @param argv 启动参数
+ * @return 0-不是以哨兵模式启动
+ *         1-以哨兵模式启动
+ */
 int checkForSentinelMode(int argc, char **argv) {
     int j;
 
-    if (strstr(argv[0],"redis-sentinel") != NULL) return 1;
+    if (strstr(argv[0],"redis-sentinel") != NULL) return 1; // 启动的是redis-sentinel
     for (j = 1; j < argc; j++)
-        if (!strcmp(argv[j],"--sentinel")) return 1;
+        if (!strcmp(argv[j],"--sentinel")) return 1; // 启动参数中指定了--sentinel
     return 0;
 }
 
@@ -5961,6 +5978,10 @@ void loadDataFromDisk(void) {
     }
 }
 
+/**
+ * @brief 发生内存OOM时的处理器
+ * @param allocation_size
+ */
 void redisOutOfMemoryHandler(size_t allocation_size) {
     serverLog(LL_WARNING,"Out Of Memory allocating %zu bytes!",
         allocation_size);
@@ -6153,6 +6174,21 @@ redisTestProc *getTestProcByName(const char *name) {
 }
 #endif
 
+/**
+ * @brief 服务端启动流程
+ *   - 1 注册发生内存OOM的回调函数
+ *   - 2 检测是否以哨兵模式启动服务端
+ *   - 3 初始化server配置
+ *   - 4 初始化ACL子系统
+ *   - 5 初始化依赖模块
+ *   - 6 初始化SSL
+ *   - 7 初始化哨兵配置
+ *   - 8 检测是否开启RDB和AOF文件检测
+ *
+ * @param argc
+ * @param argv
+ * @return
+ */
 int main(int argc, char **argv) {
     struct timeval tv;
     int j;
@@ -6202,11 +6238,15 @@ int main(int argc, char **argv) {
 #ifdef INIT_SETPROCTITLE_REPLACEMENT
     spt_init(argc, argv);
 #endif
+    // 设置时区
     setlocale(LC_COLLATE,"");
     tzset(); /* Populates 'timezone' global. */
+    // 内存oom的处理器 注册了一个回调函数
     zmalloc_set_oom_handler(redisOutOfMemoryHandler);
+    // 设置随机数种子
     srand(time(NULL)^getpid());
     srandom(time(NULL)^getpid());
+    // 系统时间
     gettimeofday(&tv,NULL);
     init_genrand64(((long long) tv.tv_sec * 1000000 + tv.tv_usec) ^ getpid());
     crc64_init();
@@ -6217,14 +6257,24 @@ int main(int argc, char **argv) {
      */
     umask(server.umask = umask(0777));
 
+    // 根据本地时间生成随机数种子
     uint8_t hashseed[16];
     getRandomBytes(hashseed,sizeof(hashseed));
     dictSetHashFunctionSeed(hashseed);
+    /**
+     * 是否启动哨兵模式
+     *   - 执行的redis-sentinel可执行文件
+     *   - 启动参数配置了可选项--sentinel
+     */
     server.sentinel_mode = checkForSentinelMode(argc,argv);
+    // 初始化server配置 填充redisServer中的字段
     initServerConfig();
+    // ACL子系统初始化
     ACLInit(); /* The ACL subsystem must be initialized ASAP because the
                   basic networking code and client creation depends on it. */
+    // 初始化依赖模块
     moduleInitModulesSystem();
+    // ssl相关的初始化
     tlsInit();
 
     /* Store the executable path and arguments in a safe place in order
@@ -6237,6 +6287,7 @@ int main(int argc, char **argv) {
     /* We need to init sentinel right now as parsing the configuration file
      * in sentinel mode will have the effect of populating the sentinel
      * data structures with master nodes to monitor. */
+    // 初始化哨兵配置
     if (server.sentinel_mode) {
         initSentinelConfig();
         initSentinel();
@@ -6245,10 +6296,11 @@ int main(int argc, char **argv) {
     /* Check if we need to start in redis-check-rdb/aof mode. We just execute
      * the program main. However the program is part of the Redis executable
      * so that we can easily execute an RDB check on loading errors. */
-    if (strstr(argv[0],"redis-check-rdb") != NULL)
-        redis_check_rdb_main(argc,argv,NULL);
-    else if (strstr(argv[0],"redis-check-aof") != NULL)
-        redis_check_aof_main(argc,argv);
+    // 检测是否开启RDB和AOF文件检测
+    if (strstr(argv[0],"redis-check-rdb") != NULL) // 运行redis-check-rdb可执行文件
+        redis_check_rdb_main(argc,argv,NULL); // 检测RDB文件
+    else if (strstr(argv[0],"redis-check-aof") != NULL) // 运行redis-check-aof可执行文件
+        redis_check_aof_main(argc,argv); // 检测AOF文件
 
     if (argc >= 2) {
         j = 1; /* First option to parse in argv[] */
@@ -6275,6 +6327,7 @@ int main(int argc, char **argv) {
          * First argument is the config file name? */
         if (argv[1][0] != '-') {
             /* Replace the config file in server.exec_argv with its absolute path. */
+            // 把配置文件的绝对路径保存下来 下面解析配置文件配置项要用到
             server.configfile = getAbsolutePath(argv[1]);
             zfree(server.exec_argv[1]);
             server.exec_argv[1] = zstrdup(server.configfile);
@@ -6301,13 +6354,15 @@ int main(int argc, char **argv) {
             }
             j++;
         }
-
+        // 解析配置文件配置项
         loadServerConfig(server.configfile, config_from_stdin, options);
+        // 加载哨兵模式的配置项
         if (server.sentinel_mode) loadSentinelConfigFromQueue();
         sdsfree(options);
     }
     if (server.sentinel_mode) sentinelCheckConfigFile();
     server.supervised = redisIsSupervised(server.supervised_mode);
+    // 根据配置 开启守护进程
     int background = server.daemonize && !server.supervised;
     if (background) daemonize();
 
@@ -6327,6 +6382,7 @@ int main(int argc, char **argv) {
     }
 
     readOOMScoreAdj();
+    // 初始化server服务
     initServer();
     if (background || server.pidfile) createPidFile();
     if (server.set_proc_title) redisSetProcTitle(NULL);
@@ -6359,6 +6415,7 @@ int main(int argc, char **argv) {
         moduleLoadFromQueue();
         ACLLoadUsersAtStartup();
         InitServerLast();
+        // 恢复持久化的数据到内存数据库
         loadDataFromDisk();
         if (server.cluster_enabled) {
             if (verifyClusterConfigWithData() == C_ERR) {
@@ -6398,7 +6455,9 @@ int main(int argc, char **argv) {
     redisSetCpuAffinity(server.server_cpulist);
     setOOMScoreAdj(-1);
 
+    // ze主循环 开启监听
     aeMain(server.el);
+    // 删除监听
     aeDeleteEventLoop(server.el);
     return 0;
 }

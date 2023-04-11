@@ -1191,6 +1191,7 @@ struct redisServer {
     /* General */
     pid_t pid;                  /* Main process pid. */
     pthread_t main_thread_id;         /* Main thread id */
+    // 配置文件的绝对路径
     char *configfile;           /* Absolute config file path, or NULL */
     char *executable;           /* Absolute executable file path. */
     char **exec_argv;           /* Executable argv vector (copy). */
@@ -1202,6 +1203,7 @@ struct redisServer {
     int hz;                     /* serverCron() calls frequency in hertz */
     int in_fork_child;          /* indication that this is a fork child */
     redisDb *db;
+    // 命令字典 存放所有暴露给客户端的api命令
     dict *commands;             /* Command table */
     dict *orig_commands;        /* Command table before command renaming. */
     aeEventLoop *el;
@@ -1214,6 +1216,7 @@ struct redisServer {
     int arch_bits;              /* 32 or 64 depending on sizeof(long) */
     int cronloops;              /* Number of times the cron function run */
     char runid[CONFIG_RUN_ID_SIZE+1];  /* ID always different at every exec. */
+    // 1标识启用哨兵模式
     int sentinel_mode;          /* True if this instance is a Sentinel. */
     size_t initial_memory_usage; /* Bytes used after initialization. */
     int always_show_logo;       /* Show logo even for non-stdout logging. */
@@ -1667,11 +1670,17 @@ typedef struct {
 
 typedef void redisCommandProc(client *c);
 typedef int redisGetKeysProc(struct redisCommand *cmd, robj **argv, int argc, getKeysResult *result);
+// 封装了redis暴露给客户端的命令
 struct redisCommand {
+    // 命令 比如set
     char *name;
+    // 命令的执行函数 比如setCommand
     redisCommandProc *proc;
+    // 参数的个数
     int arity;
+    // 字符串标志位
     char *sflags;   /* Flags as string representation, one char per flag. */
+    // 真实的标志位
     uint64_t flags; /* The actual flags, obtained from the 'sflags' field. */
     /* Use a function to determine keys arguments in a command line.
      * Used for Redis Cluster redirect. */
@@ -1769,7 +1778,7 @@ typedef struct {
  * Extern declarations
  *----------------------------------------------------------------------------*/
 
-// 创建了redisServer实例
+// 创建了redisServer实例 全局
 extern struct redisServer server;
 extern struct sharedObjectsStruct shared;
 extern dictType objectKeyPointerValueDictType;

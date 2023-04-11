@@ -85,6 +85,7 @@ void zlibc_free(void *ptr) {
 
 static redisAtomic size_t used_memory = 0;
 
+// 内存OOM处理器-默认处理器
 static void zmalloc_default_oom(size_t size) {
     fprintf(stderr, "zmalloc: Out of memory trying to allocate %zu bytes\n",
         size);
@@ -92,6 +93,7 @@ static void zmalloc_default_oom(size_t size) {
     abort();
 }
 
+// 内存OOM处理器
 static void (*zmalloc_oom_handler)(size_t) = zmalloc_default_oom;
 
 /* Try allocating memory, and return NULL if failed.
@@ -338,6 +340,10 @@ size_t zmalloc_used_memory(void) {
     return um;
 }
 
+/**
+ * @brief 注册内存OOM回调函数
+ * @param oom_handler 发生OOM时的处理器
+ */
 void zmalloc_set_oom_handler(void (*oom_handler)(size_t)) {
     zmalloc_oom_handler = oom_handler;
 }

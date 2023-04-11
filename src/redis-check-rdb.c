@@ -364,6 +364,14 @@ err:
  * status code according to success (RDB is sane) or error (RDB is corrupted).
  * Otherwise if called with a non NULL fp, the function returns C_OK or
  * C_ERR depending on the success or failure. */
+/**
+ * @brief
+ * @param argc
+ * @param argv
+ * @param fp
+ * @return 指定了fp才会有返回值
+ *         没有指定fp时通过exit状态码结束栈调用
+ */
 int redis_check_rdb_main(int argc, char **argv, FILE *fp) {
     struct timeval tv;
 

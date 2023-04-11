@@ -912,23 +912,32 @@ int sdscmp(const sds s1, const sds s2) {
  * requires length arguments. sdssplit() is just the
  * same function but for zero-terminated strings.
  */
+/**
+ * @brief 切割字符串
+ * @param s 要切割的字符串 sds实例 指针指向的是sds的buf数组
+ * @param len sds字符串的长度
+ * @param sep 分隔符 字符串的字符数组形式
+ * @param seplen 分隔符的长度
+ * @param count 用于统计字符串被切割成了多少个子串
+ * @return sds数组
+ */
 sds *sdssplitlen(const char *s, ssize_t len, const char *sep, int seplen, int *count) {
     int elements = 0, slots = 5;
     long start = 0, j;
     sds *tokens;
 
     if (seplen < 1 || len < 0) return NULL;
-
+    // sds数组内存申请 预申请长度为5的数组
     tokens = s_malloc(sizeof(sds)*slots);
     if (tokens == NULL) return NULL;
 
-    if (len == 0) {
+    if (len == 0) { // 源字符串为空 没法切割
         *count = 0;
         return tokens;
     }
-    for (j = 0; j < (len-(seplen-1)); j++) {
+    for (j = 0; j < (len-(seplen-1)); j++) { // 遍历源字符串字符
         /* make sure there is room for the next element and the final one */
-        if (slots < elements+2) {
+        if (slots < elements+2) { // sds数组扩容
             sds *newtokens;
 
             slots *= 2;

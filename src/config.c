@@ -387,6 +387,10 @@ void initConfigValues() {
     }
 }
 
+/**
+ * @brief 解析配置内容 加载到redisServer实例字段中
+ * @param config sds实例 指针指向的是sds的buf数组
+ */
 void loadServerConfigFromString(char *config) {
     const char *err = NULL;
     int linenum = 0, totlines, i;
@@ -394,6 +398,11 @@ void loadServerConfigFromString(char *config) {
     sds *lines;
     int save_loaded = 0;
 
+    /**
+     * 以换行符为切割符切割config配置内容
+     *   - 切割的子串结果放在lines这个数组里面
+     *   - 切割的子串数量放在totlines中
+     */
     lines = sdssplitlen(config,strlen(config),"\n",1,&totlines);
 
     for (i = 0; i < totlines; i++) {
@@ -644,12 +653,20 @@ loaderr:
  * Both filename and options can be NULL, in such a case are considered
  * empty. This way loadServerConfig can be used to just load a file or
  * just load a string. */
+/**
+ * @brief 将指定配置地方的配置内容都读取到sds中 然后统一将配置内容加载到redisServer实例的字段中
+ * @param filename 配置来源-文件
+ * @param config_from_stdin 配置来源-命令行标准输入
+ * @param options 配置来源-字符串
+ */
 void loadServerConfig(char *filename, char config_from_stdin, char *options) {
+    // 缓存配置内容
     sds config = sdsempty();
     char buf[CONFIG_MAX_LINE+1];
     FILE *fp;
 
     /* Load the file content */
+    // 文件中配置项读取到config中
     if (filename) {
         if ((fp = fopen(filename,"r")) == NULL) {
             serverLog(LL_WARNING,
@@ -662,6 +679,7 @@ void loadServerConfig(char *filename, char config_from_stdin, char *options) {
         fclose(fp);
     }
     /* Append content from stdin */
+    // 命令行配置读取到config中
     if (config_from_stdin) {
         serverLog(LL_WARNING,"Reading config from stdin");
         fp = stdin;
@@ -670,10 +688,12 @@ void loadServerConfig(char *filename, char config_from_stdin, char *options) {
     }
 
     /* Append the additional options */
+    // options的字符串内容读取到config中
     if (options) {
         config = sdscat(config,"\n");
         config = sdscat(config,options);
     }
+    // 尝试将配置加载到redisServer实例字段中
     loadServerConfigFromString(config);
     sdsfree(config);
 }

@@ -1780,6 +1780,7 @@ typedef struct {
 
 // 创建了redisServer实例 全局
 extern struct redisServer server;
+// 相当于单例
 extern struct sharedObjectsStruct shared;
 extern dictType objectKeyPointerValueDictType;
 extern dictType objectKeyHeapPointerValueDictType;

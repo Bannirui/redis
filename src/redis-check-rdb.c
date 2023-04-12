@@ -182,6 +182,14 @@ void rdbCheckSetupSignals(void) {
  * 1 is returned.
  * The file is specified as a filename in 'rdbfilename' if 'fp' is not NULL,
  * otherwise the already open file 'fp' is checked. */
+/**
+ * @brief 2个形参不会同时传递
+ *          - rdbfilename是以可执行文件执行时通过解析main函数启动参数而调用的
+ *          - fp是普通函数调用传递进来的rdb文件
+ * @param rdbfilename
+ * @param fp
+ * @return
+ */
 int redis_check_rdb(char *rdbfilename, FILE *fp) {
     uint64_t dbid;
     int type, rdbver;
@@ -365,17 +373,20 @@ err:
  * Otherwise if called with a non NULL fp, the function returns C_OK or
  * C_ERR depending on the success or failure. */
 /**
- * @brief
- * @param argc
- * @param argv
- * @param fp
- * @return 指定了fp才会有返回值
- *         没有指定fp时通过exit状态码结束栈调用
+ * @brief 组合实参方式 有两种场景
+ *          - 可执行文件的main函数入口 指定argc argv作为启动参数
+ *          - 普通的函数调用 指定fp
+ * @param argc 启动参数 2个启动参数
+ * @param argv 启动参数 argv[0]==redis-check-rdb
+ *                     argv[1]==rdb文件
+ * @param fp 普通函数调用时 指定要检测的rdb文件
+ * @return 指定了fp是以普通函数栈调用方式运行 有返回值
+ *         没有指定fp时 以可执行文件方式执行 作为main函数入口 通过exit状态码结束栈调用
  */
 int redis_check_rdb_main(int argc, char **argv, FILE *fp) {
     struct timeval tv;
 
-    if (argc != 2 && fp == NULL) {
+    if (argc != 2 && fp == NULL) { // 简单的参数校验
         fprintf(stderr, "Usage: %s <rdb-file-name>\n", argv[0]);
         exit(1);
     }

@@ -6184,7 +6184,13 @@ redisTestProc *getTestProcByName(const char *name) {
  *   - 6 初始化SSL
  *   - 7 初始化哨兵配置
  *   - 8 检测是否开启RDB和AOF文件检测
- *
+ *   - 9 解析配置文件redis.conf配置项
+ *   - 10 加载哨兵模式配置项
+ *   - 11 开启守护进程
+ *   - 12 初始化server服务
+ *   - 13 加载本地数据到内存数据库
+ *   - 14 开启监听
+ *   - 15 删除监听
  * @param argc
  * @param argv
  * @return
@@ -6296,13 +6302,17 @@ int main(int argc, char **argv) {
     /* Check if we need to start in redis-check-rdb/aof mode. We just execute
      * the program main. However the program is part of the Redis executable
      * so that we can easily execute an RDB check on loading errors. */
-    // 检测是否开启RDB和AOF文件检测
+    /**
+     * 检测是否开启RDB和AOF文件检测
+     * 这个地方为啥这样做呢
+     * 从server入口main函数进来的 执行程序肯定是redis-server 那么它的argv[0]肯定是redis-server啊
+     */
     if (strstr(argv[0],"redis-check-rdb") != NULL) // 运行redis-check-rdb可执行文件
         redis_check_rdb_main(argc,argv,NULL); // 检测RDB文件
     else if (strstr(argv[0],"redis-check-aof") != NULL) // 运行redis-check-aof可执行文件
         redis_check_aof_main(argc,argv); // 检测AOF文件
 
-    if (argc >= 2) {
+    if (argc >= 2) { // 启动程序带着启动参数 解析启动参数
         j = 1; /* First option to parse in argv[] */
         sds options = sdsempty();
 
@@ -6354,7 +6364,12 @@ int main(int argc, char **argv) {
             }
             j++;
         }
-        // 解析配置文件配置项
+        /**
+         * 解析配置文件配置项
+         *   - 启动参数指定的配置文件
+         *   - 启动参数指定的可选参数
+         *   - 启动参数自定义的配置
+         */
         loadServerConfig(server.configfile, config_from_stdin, options);
         // 加载哨兵模式的配置项
         if (server.sentinel_mode) loadSentinelConfigFromQueue();

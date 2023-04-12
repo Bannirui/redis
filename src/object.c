@@ -38,10 +38,17 @@
 
 /* ===================== Creation and parsing of objects ==================== */
 
+/**
+ * @brief
+ * @param type 数据类型 String List Hash Set ZSet
+ * @param ptr redisObject的ptr指向的就是这个数据的实现
+ *              - 对于字符串的编码sds而言 本身sds暴露的指针就是指向自己的buf数组 所以redisObject中的ptr指向的也就是buf数组
+ * @return
+ */
 robj *createObject(int type, void *ptr) {
     robj *o = zmalloc(sizeof(*o));
-    o->type = type;
-    o->encoding = OBJ_ENCODING_RAW;
+    o->type = type; // 数据类型
+    o->encoding = OBJ_ENCODING_RAW; // 编码方式
     o->ptr = ptr;
     o->refcount = 1;
 
@@ -82,35 +89,62 @@ robj *makeObjectShared(robj *o) {
 
 /* Create a string object with encoding OBJ_ENCODING_RAW, that is a plain
  * string object where o->ptr points to a proper sds string. */
+/**
+ * @brief 字符串的编码方式是RAW
+ *          - 字符串编码方式是sds
+ *          - redisObject的内存布局并不一定跟sds连在一起
+ * @param ptr 字符串的字符数组形式
+ * @param len 字符串长度
+ * @return
+ */
 robj *createRawStringObject(const char *ptr, size_t len) {
+    // 将字符串以sds进行编码
     return createObject(OBJ_STRING, sdsnewlen(ptr,len));
 }
 
 /* Create a string object with encoding OBJ_ENCODING_EMBSTR, that is
  * an object where the sds string is actually an unmodifiable string
  * allocated in the same chunk as the object itself. */
+/**
+ * @brief 字符串的编码是MEBSTR
+ * @param ptr 字符串的字符数组形式
+ * @param len 字符串长度
+ * @return redisObject实例
+ */
 robj *createEmbeddedStringObject(const char *ptr, size_t len) {
-    robj *o = zmalloc(sizeof(robj)+sizeof(struct sdshdr8)+len+1);
-    struct sdshdr8 *sh = (void*)(o+1);
+    /**
+     * @brief 申请一整片内存
+     *        所谓的EMBSTR是针对长度<=44的字符串 将sds的内存和redisObject的内存连在一起
+     *        因此 整体的内存布局如下
+     *          - redisObject的内存大小
+     *          - sds的内存大小
+     *          - 字符串长度
+     *          - 字符串结束符\0
+     *        sdshdr5存储的字符串长度上限为2^5-1 即31
+     *        而EMBSTR定义的存储字符串长度上限为44
+     *        所以这个地方采用sdshdr8进行编码
+     */
+    robj *o = zmalloc(sizeof(robj)+sizeof(struct sdshdr8)+len+1); // 当前o指针指向的是用来存储redisObject的
+    struct sdshdr8 *sh = (void*)(o+1); // sh指针指向的是sds数据结构 该数据结构现在柔性数组buf为空 不占空间 那么sdshdr8就是3byte大小
 
-    o->type = OBJ_STRING;
-    o->encoding = OBJ_ENCODING_EMBSTR;
-    o->ptr = sh+1;
+    o->type = OBJ_STRING; // 数据类型String
+    o->encoding = OBJ_ENCODING_EMBSTR; // 编码方式EMBSTR
+    o->ptr = sh+1; // 相当于sh指针后移3byte 此时指向的是sds的buf数组
     o->refcount = 1;
-    if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
+    if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) { // 数据访问时间记录
         o->lru = (LFUGetTimeInMinutes()<<8) | LFU_INIT_VAL;
     } else {
         o->lru = LRU_CLOCK();
     }
 
-    sh->len = len;
-    sh->alloc = len;
-    sh->flags = SDS_TYPE_8;
+    sh->len = len; // 字符串长度
+    sh->alloc = len; // 申请的buf数组长度
+    sh->flags = SDS_TYPE_8; // sds类型
     if (ptr == SDS_NOINIT)
         sh->buf[len] = '\0';
     else if (ptr) {
-        memcpy(sh->buf,ptr,len);
-        sh->buf[len] = '\0';
+        memcpy(sh->buf,ptr,len); // 字符串内容放到sds的buf数组里面
+        sh->buf[len] = '\0'; // 结束符
     } else {
         memset(sh->buf,0,len+1);
     }
@@ -123,12 +157,24 @@ robj *createEmbeddedStringObject(const char *ptr, size_t len) {
  *
  * The current limit of 44 is chosen so that the biggest string object
  * we allocate as EMBSTR will still fit into the 64 byte arena of jemalloc. */
+// EMBSTR编码方式的字符串长度上限 44
 #define OBJ_ENCODING_EMBSTR_SIZE_LIMIT 44
+/**
+ * @brief 字符串对象
+ *        对于字符串而言共3中编码方式
+ *           - 编码成整数 整数的字节上限是64bit 反推字符串长度上限就是20
+ *           - 编码成sds 根据长度进行选择具体的编码方式 长度临界是44
+ *             - 编码成EMBSTR
+ *             - 编码成RAW
+ * @param ptr 字符串的字符数组形式
+ * @param len 字符串长度
+ * @return
+ */
 robj *createStringObject(const char *ptr, size_t len) {
     if (len <= OBJ_ENCODING_EMBSTR_SIZE_LIMIT)
-        return createEmbeddedStringObject(ptr,len);
+        return createEmbeddedStringObject(ptr,len); // 字符串长度<=44 编码成EMBSTR
     else
-        return createRawStringObject(ptr,len);
+        return createRawStringObject(ptr,len); // 编码成RAW
 }
 
 /* Same as CreateRawStringObject, can return NULL if allocation fails */
@@ -153,6 +199,15 @@ robj *tryCreateStringObject(const char *ptr, size_t len) {
  * integer, because the object is going to be used as value in the Redis key
  * space (for instance when the INCR command is used), so we want LFU/LRU
  * values specific for each key. */
+/**
+ * @brief 字符串可以转换成整数 最终也将执行到这个方法
+ *        体现的就是字符串的编发方式INT
+ * @param value 整数
+ * @param valueobj 标识是否可以使用共享对象
+ *                 0标识可以使用共享对象
+ *                 1标识不能用共享对象 相当于要用原型模式创建新对象
+ * @return
+ */
 robj *createStringObjectFromLongLongWithOptions(long long value, int valueobj) {
     robj *o;
 
@@ -164,14 +219,14 @@ robj *createStringObjectFromLongLongWithOptions(long long value, int valueobj) {
         valueobj = 0;
     }
 
-    if (value >= 0 && value < OBJ_SHARED_INTEGERS && valueobj == 0) {
+    if (value >= 0 && value < OBJ_SHARED_INTEGERS && valueobj == 0) { // 使用共享对象
         incrRefCount(shared.integers[value]);
         o = shared.integers[value];
-    } else {
-        if (value >= LONG_MIN && value <= LONG_MAX) {
-            o = createObject(OBJ_STRING, NULL);
-            o->encoding = OBJ_ENCODING_INT;
-            o->ptr = (void*)((long)value);
+    } else { // 原型
+        if (value >= LONG_MIN && value <= LONG_MAX) { // 整数占用字节64bit 校验极值
+            o = createObject(OBJ_STRING, NULL); // 数据类型是String
+            o->encoding = OBJ_ENCODING_INT; // 编码方式是INT
+            o->ptr = (void*)((long)value); // ptr指向的就是整数
         } else {
             o = createObject(OBJ_STRING,sdsfromlonglong(value));
         }

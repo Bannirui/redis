@@ -73,7 +73,7 @@ struct __attribute__ ((__packed__)) sdshdr8 {
     // 高5位 保留位
     // 低3位 保存类型标志
     unsigned char flags; /* 3 lsb of type, 5 unused bits */
-    // 字符数组
+    // 字符数组 柔性数组 为空时不占字节空间
     char buf[];
 };
 // 最长(2^16 -1)长度的sdshdr

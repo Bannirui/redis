@@ -675,6 +675,7 @@ typedef struct RedisModuleDigest {
 #define OBJ_SHARED_REFCOUNT INT_MAX     /* Global object never destroyed. */
 #define OBJ_STATIC_REFCOUNT (INT_MAX-1) /* Object allocated in the stack. */
 #define OBJ_FIRST_SPECIAL_REFCOUNT OBJ_STATIC_REFCOUNT
+// 16byte
 typedef struct redisObject {
     // 数据类型
     unsigned type:4;
@@ -693,7 +694,11 @@ typedef struct redisObject {
                             * and most significant 16 bits access time). */
     // 数据的引用计数
     int refcount;
-    // 数据
+    /**
+     * 指向数据类型的编码方式的实现上
+     *   - sds字符串而言 指向的是sds 而sds指针指向的又是sds的buf数组
+     *   - 其他编码方式 指向的就是数据结构实例 比如quicklist\dict\ziplist
+     */
     void *ptr;
 } robj;
 

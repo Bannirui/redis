@@ -6036,9 +6036,14 @@ int checkForSentinelMode(int argc, char **argv) {
 }
 
 /* Function called at startup to load RDB or AOF file in memory. */
+/**
+ * @brief 将持久化的数据加载恢复到内存数据库
+ *          - 优先使用aof文件恢复
+ *          - 次级使用rdb的dump文件恢复
+ */
 void loadDataFromDisk(void) {
     long long start = ustime();
-    if (server.aof_state == AOF_ON) {
+    if (server.aof_state == AOF_ON) { // 开启了aof
         if (loadAppendOnlyFile(server.aof_filename) == C_OK)
             serverLog(LL_NOTICE,"DB loaded from append only file: %.3f seconds",(float)(ustime()-start)/1000000);
     } else {
@@ -6285,8 +6290,8 @@ redisTestProc *getTestProcByName(const char *name) {
  *   - 11 是否以后台进程方式运行服务端
  *   - 12 初始化server服务
  *   - 13 加载本地数据到内存数据库
- *   - 14 开启监听
- *   - 15 删除监听
+ *   - 14 开启事件监听器
+ *   - 15 删除事件监听器
  * @param argc
  * @param argv
  * @return
@@ -6569,9 +6574,9 @@ int main(int argc, char **argv) {
     redisSetCpuAffinity(server.server_cpulist);
     setOOMScoreAdj(-1);
 
-    // ze主循环 开启监听
+    // 开启事件监听器
     aeMain(server.el);
-    // 删除监听
+    // 删除事件监听器
     aeDeleteEventLoop(server.el);
     return 0;
 }

@@ -5557,6 +5557,9 @@ exit:
 #endif /* __arm64__ */
 #endif /* __linux__ */
 
+/**
+ * @brief 创建pid文件 写入进程号
+ */
 void createPidFile(void) {
     /* If pidfile requested, but no pidfile defined, use
      * default pidfile path */
@@ -5565,7 +5568,7 @@ void createPidFile(void) {
     /* Try to write the pid file in a best-effort way. */
     FILE *fp = fopen(server.pidfile,"w");
     if (fp) {
-        fprintf(fp,"%d\n",(int)getpid());
+        fprintf(fp,"%d\n",(int)getpid()); // 记录进程号
         fclose(fp);
     }
 }
@@ -6422,6 +6425,7 @@ int main(int argc, char **argv) {
     readOOMScoreAdj();
     // 初始化server服务
     initServer();
+    // 后台执行模式下 将进程号写到文件
     if (background || server.pidfile) createPidFile();
     if (server.set_proc_title) redisSetProcTitle(NULL);
     redisAsciiArt();

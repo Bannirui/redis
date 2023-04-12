@@ -5570,10 +5570,31 @@ void createPidFile(void) {
     }
 }
 
+/**
+ * @brief 以后台进程方式运行服务
+ */
 void daemonize(void) {
     int fd;
 
+    /**
+     * 系统调用 fork当前进程
+     *   - 系统调用成功了返回值为0
+     *   - fork子进程失败了就返回到调用方父进程
+     */
     if (fork() != 0) exit(0); /* parent exits */
+    /**
+     * 系统调用 以下拷贝自系统手册
+     *
+     * The setsid function creates a new session.  The calling process is the
+     * session leader of the new session, is the process group leader of a
+     * new process group and has no controlling terminal.  The calling
+     * process is the only process in either the session or the process
+     * group.
+     *
+     * Upon successful completion, the setsid function returns the value of
+     * the process group ID of the new process group, which is the same as
+     * the process ID of the calling process.
+     */
     setsid(); /* create a new session */
 
     /* Every output goes to /dev/null. If Redis is daemonized but
@@ -6186,7 +6207,7 @@ redisTestProc *getTestProcByName(const char *name) {
  *   - 8 检测是否开启RDB和AOF文件检测
  *   - 9 解析配置文件redis.conf配置项
  *   - 10 加载哨兵模式配置项
- *   - 11 开启守护进程
+ *   - 11 是否以后台进程方式运行服务端
  *   - 12 初始化server服务
  *   - 13 加载本地数据到内存数据库
  *   - 14 开启监听
@@ -6377,7 +6398,9 @@ int main(int argc, char **argv) {
     }
     if (server.sentinel_mode) sentinelCheckConfigFile();
     server.supervised = redisIsSupervised(server.supervised_mode);
-    // 根据配置 开启守护进程
+    /**
+     * 根据配置 redis服务以后台进程运行
+     */
     int background = server.daemonize && !server.supervised;
     if (background) daemonize();
 

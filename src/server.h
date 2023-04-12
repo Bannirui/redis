@@ -680,7 +680,14 @@ typedef struct redisObject {
     unsigned type:4;
     // 数据编码方式
     unsigned encoding:4;
-    // 内存淘汰策略
+    /**
+     * @brief 配合内存淘汰策略使用的
+     *          - LFU
+     *            - 高16位 记录访问数据的时间戳 单位分钟
+     *            - 低8位 记录访问数据频率
+     *          - LRU
+     *            - 记录访问数据的时间戳 单位秒 24位
+     */
     unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or
                             * LFU data (least significant 8 bits frequency
                             * and most significant 16 bits access time). */
@@ -1533,6 +1540,7 @@ struct redisServer {
     /* Limits */
     unsigned int maxclients;            /* Max number of simultaneous clients */
     unsigned long long maxmemory;   /* Max number of memory bytes to use */
+    // 内存淘汰策略 默认值是MAXMEMORY_NO_EVICTION
     int maxmemory_policy;           /* Policy for key eviction */
     int maxmemory_samples;          /* Precision of random sampling */
     int maxmemory_eviction_tenacity;/* Aggressiveness of eviction processing */

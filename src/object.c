@@ -47,9 +47,17 @@ robj *createObject(int type, void *ptr) {
 
     /* Set the LRU to the current lruclock (minutes resolution), or
      * alternatively the LFU counter. */
+    // 内存淘汰策略是MAXMEMORY_NO_EVICTION
     if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
+        /**
+         * @brief
+         *   - 高16位 记录访问数据的时间戳 分钟
+         *   - 低8位 应该记录访问数据次数 但是这个地方初始化是5 啥意思
+         */
+         // TODO: 2023/4/12
         o->lru = (LFUGetTimeInMinutes()<<8) | LFU_INIT_VAL;
     } else {
+        // 记录访问数据的时间戳 秒
         o->lru = LRU_CLOCK();
     }
     return o;

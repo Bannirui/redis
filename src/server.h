@@ -720,9 +720,9 @@ typedef struct clientReplyBlock {
  * database. The database number is the 'id' field in the structure. */
 // redis的内存数据库
 typedef struct redisDb {
-    // 全局字典
+    // 全局字典 所有数据的存储 key->redisObject
     dict *dict;                 /* The keyspace for this DB */
-    // 过期字典
+    // 过期字典 存储了所有设置了过期时间的key key->time_t
     dict *expires;              /* Timeout of keys with a timeout set */
     dict *blocking_keys;        /* Keys with clients waiting for data (BLPOP)*/
     dict *ready_keys;           /* Blocked keys that received a PUSH */
@@ -1189,7 +1189,9 @@ typedef enum childInfoType {
 
 struct redisServer {
     /* General */
+    // 进程号
     pid_t pid;                  /* Main process pid. */
+    // 线程id
     pthread_t main_thread_id;         /* Main thread id */
     // 配置文件的绝对路径
     char *configfile;           /* Absolute config file path, or NULL */
@@ -1206,6 +1208,7 @@ struct redisServer {
     // 命令字典 存放所有暴露给客户端的api命令
     dict *commands;             /* Command table */
     dict *orig_commands;        /* Command table before command renaming. */
+    // 事件监听器
     aeEventLoop *el;
     rax *errors;                /* Errors table */
     redisAtomic unsigned int lruclock; /* Clock for LRU eviction */
@@ -1237,6 +1240,7 @@ struct redisServer {
     int child_type;             /* Type of current child */
     client *module_client;      /* "Fake" client to call Redis from modules */
     /* Networking */
+    // redis监听的知名端口6379
     int port;                   /* TCP listening port */
     int tls_port;               /* TLS listening port */
     int tcp_backlog;            /* TCP listen() backlog */
@@ -1244,8 +1248,11 @@ struct redisServer {
     int bindaddr_count;         /* Number of addresses in server.bindaddr[] */
     char *unixsocket;           /* UNIX socket path */
     mode_t unixsocketperm;      /* UNIX socket permission */
+    // 服务端端口6379的监听socket
     socketFds ipfd;             /* TCP socket file descriptors */
+    // ssl相关socket的监听 默认不监听
     socketFds tlsfd;            /* TLS socket file descriptors */
+    // unix Socket监听
     int sofd;                   /* Unix socket file descriptor */
     socketFds cfd;              /* Cluster bus listening socket */
     list *clients;              /* List of active clients */
@@ -1253,6 +1260,7 @@ struct redisServer {
     list *clients_pending_write; /* There is to write or install handler. */
     list *clients_pending_read;  /* Client has pending read socket buffers. */
     list *slaves, *monitors;    /* List of slaves and MONITORs */
+    // 服务端当前处理的client
     client *current_client;     /* Current client executing the command. */
     rax *clients_timeout_table; /* Radix tree for blocked clients timeouts. */
     long fixed_time_expire;     /* If > 0, expire keys against server.mstime. */
@@ -1367,6 +1375,7 @@ struct redisServer {
     int aof_enabled;                /* AOF configuration */
     int aof_state;                  /* AOF_(ON|OFF|WAIT_REWRITE) */
     int aof_fsync;                  /* Kind of fsync() policy */
+    // aof文件 字符串
     char *aof_filename;             /* Name of the AOF file */
     int aof_no_fsync_on_rewrite;    /* Don't fsync if a rewrite is in prog. */
     int aof_rewrite_perc;           /* Rewrite AOF if % growth is > M and... */
@@ -1378,6 +1387,7 @@ struct redisServer {
     int aof_rewrite_scheduled;      /* Rewrite once BGSAVE terminates. */
     list *aof_rewrite_buf_blocks;   /* Hold changes during an AOF rewrite. */
     sds aof_buf;      /* AOF buffer, written before entering the event loop */
+    // aof文件fd
     int aof_fd;       /* File descriptor of currently selected AOF file */
     int aof_selected_db; /* Currently selected DB in AOF */
     time_t aof_flush_postponed_start; /* UNIX time of postponed AOF flush */
@@ -1405,6 +1415,10 @@ struct redisServer {
                                       to child process. */
     sds aof_child_diff;             /* AOF diff accumulator child side. */
     /* RDB persistence */
+    /**
+     * 计算server维护的数据是否有更新
+     *   - 有更新 需要记录aof和通知replication
+     */
     long long dirty;                /* Changes to DB from the last save */
     long long dirty_before_bgsave;  /* Used to restore dirty on failed BGSAVE */
     struct saveparam *saveparams;   /* Save points array for RDB */
@@ -1564,6 +1578,7 @@ struct redisServer {
     size_t blocking_op_nesting; /* Nesting level of blocking operation, used to reset blocked_last_cron. */
     long long blocked_last_cron; /* Indicate the mstime of the last time we did cron jobs from a blocking operation */
     /* Pubsub */
+    // 记录订阅的所有client
     dict *pubsub_channels;  /* Map channels to list of subscribed clients */
     dict *pubsub_patterns;  /* A dict of pubsub_patterns */
     int notify_keyspace_events; /* Events to propagate via Pub/Sub. This is an

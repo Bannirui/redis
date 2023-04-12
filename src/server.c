@@ -2474,6 +2474,11 @@ void afterSleep(struct aeEventLoop *eventLoop) {
 
 /* =========================== Server initialization ======================== */
 
+/**
+ * @brief 创建共享对象
+ * 这些对象都是通用性很强的资源 在后面跟客户端的交互中会反复使用
+ * 服务端提前将这些资源分配创建好 避免了临时申请对象的开销
+ */
 void createSharedObjects(void) {
     int j;
 
@@ -3142,14 +3147,48 @@ void makeThreadKillable(void) {
     pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 }
 
+/**
+ * @brief 服务端初始化
+ *          - 指定进程遇到信号的处理策略
+ *          - 日志设施
+ *          - redisServer实例字段赋值
+ *          - 创建共享对象
+ *          - 创建事件监听器
+ *          - 数据库db内存分配
+ *          - socket创建监听
+ *            - 服务端口
+ *            - ssl端口
+ *            - UNIX_STREAM
+ *          - 初始化数据库
+ *          - 注册serverCron函数
+ *          - 监听在端口上的socket加到监控列表
+ *            - 服务端口
+ *            - ssl端口
+ *            - unix端口
+ *          - 打开aof文件
+ *          - 慢日志初始化
+ */
 void initServer(void) {
     int j;
 
+    /**
+     * 忽略SIGHUP信号
+     * redis基本上都是以守护进程方式在运行 后台执行的时候不会有控制终端 忽略掉SIGHUP信号
+     */
     signal(SIGHUP, SIG_IGN);
+    /**
+     * 忽略SIGPIPE信号
+     * SIGPIPE信号产生
+     *   - 在写管道发现读进程终止时产生信号
+     *   - 写已终止的SOCKET_STREAM套接字同样产生该信号
+     * redis作为server 不可避免会遇到各种各样的client client意外终止导致产生的信号也要忽略掉
+     */
     signal(SIGPIPE, SIG_IGN);
+    // 特定信号的处理策略
     setupSignalHandlers();
     makeThreadKillable();
 
+    // 日志设施
     if (server.syslog_enabled) {
         openlog(server.syslog_ident, LOG_PID | LOG_NDELAY | LOG_NOWAIT,
             server.syslog_facility);
@@ -3158,23 +3197,23 @@ void initServer(void) {
     /* Initialization after setting defaults from the config system. */
     server.aof_state = server.aof_enabled ? AOF_ON : AOF_OFF;
     server.hz = server.config_hz;
-    server.pid = getpid();
+    server.pid = getpid(); // 记录进程号
     server.in_fork_child = CHILD_TYPE_NONE;
-    server.main_thread_id = pthread_self();
-    server.current_client = NULL;
+    server.main_thread_id = pthread_self(); // 记录线程id
+    server.current_client = NULL; // 服务端当前处理的client
     server.errors = raxNew();
     server.fixed_time_expire = 0;
-    server.clients = listCreate();
+    server.clients = listCreate(); // 初始化空链表
     server.clients_index = raxNew();
     server.clients_to_close = listCreate();
-    server.slaves = listCreate();
-    server.monitors = listCreate();
+    server.slaves = listCreate(); // 初始化空链表
+    server.monitors = listCreate(); // 初始化空链表
     server.clients_pending_write = listCreate();
     server.clients_pending_read = listCreate();
     server.clients_timeout_table = raxNew();
     server.replication_allowed = 1;
     server.slaveseldb = -1; /* Force to emit the first SELECT command. */
-    server.unblocked_clients = listCreate();
+    server.unblocked_clients = listCreate(); // 初始化空链表
     server.ready_keys = listCreate();
     server.clients_waiting_acks = listCreate();
     server.get_ack_from_slaves = 0;
@@ -3191,7 +3230,7 @@ void initServer(void) {
         exit(1);
     }
 
-    // 共享对象
+    // 共享对象 相当于单例缓存池
     createSharedObjects();
     adjustOpenFilesLimit();
     const char *clk_msg = monotonicInit();
@@ -3204,14 +3243,23 @@ void initServer(void) {
             strerror(errno));
         exit(1);
     }
+    // 数据库分配内存 默认配置16个数据库
     server.db = zmalloc(sizeof(redisDb)*server.dbnum);
 
+    /**
+     * 创建监听端口的socket
+     *   - 服务端口6379
+     *   - ssl端口
+     *   - UNIX_STREAM
+     */
     /* Open the TCP listening socket for the user commands. */
+    // 创建socket监听在服务端口 端口号默认为6379
     if (server.port != 0 &&
         listenToPort(server.port,&server.ipfd) == C_ERR) {
         serverLog(LL_WARNING, "Failed listening on port %u (TCP), aborting.", server.port);
         exit(1);
     }
+    // 创建socket监听在tls端口 端口号默认为0
     if (server.tls_port != 0 &&
         listenToPort(server.tls_port,&server.tlsfd) == C_ERR) {
         serverLog(LL_WARNING, "Failed listening on port %u (TLS), aborting.", server.tls_port);
@@ -3232,13 +3280,14 @@ void initServer(void) {
     }
 
     /* Abort if there are no listening sockets at all. */
+    // 校验socket的初始化是否成功
     if (server.ipfd.count == 0 && server.tlsfd.count == 0 && server.sofd < 0) {
         serverLog(LL_WARNING, "Configured to not listen anywhere, exiting.");
         exit(1);
     }
 
     /* Create the Redis databases, and initialize other internal state. */
-    // 初始化数据库
+    // 初始化数据库 默认16个库
     for (j = 0; j < server.dbnum; j++) {
         server.db[j].dict = dictCreate(&dbDictType,NULL);
         server.db[j].expires = dictCreate(&dbExpiresDictType,NULL);
@@ -3305,6 +3354,11 @@ void initServer(void) {
     /* Create the timer callback, this is our way to process many background
      * operations incrementally, like clients timeout, eviction of unaccessed
      * expired keys and so forth. */
+    /**
+     * 注册serverCron函数
+     * serverCron是个定期执行的函数 执行周期是100ms
+     * 当前注册 在1ms之后调度serverCron
+     */
     if (aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL) == AE_ERR) {
         serverPanic("Can't create event loop timers.");
         exit(1);
@@ -3312,6 +3366,12 @@ void initServer(void) {
 
     /* Create an event handler for accepting new connections in TCP and Unix
      * domain sockets. */
+    /**
+     * 将监听端口的Socket的fd加入到事件监控列表
+     *   - 服务端口
+     *   - ssl端口
+     *   - unix端口
+     */
     if (createSocketAcceptHandler(&server.ipfd, acceptTcpHandler) != C_OK) {
         serverPanic("Unrecoverable error creating TCP socket accept handler.");
     }
@@ -3337,7 +3397,8 @@ void initServer(void) {
     aeSetAfterSleepProc(server.el,afterSleep);
 
     /* Open the AOF file if needed. */
-    if (server.aof_state == AOF_ON) {
+    if (server.aof_state == AOF_ON) { // 开启了aof
+        // 打开aof文件
         server.aof_fd = open(server.aof_filename,
                                O_WRONLY|O_APPEND|O_CREAT,0644);
         if (server.aof_fd == -1) {
@@ -5806,6 +5867,9 @@ static void sigShutdownHandler(int sig) {
     server.shutdown_asap = 1;
 }
 
+/**
+ * @brief 指定要关注的几个信号 设置对应的处理器
+ */
 void setupSignalHandlers(void) {
     struct sigaction act;
 
@@ -5814,6 +5878,11 @@ void setupSignalHandlers(void) {
     sigemptyset(&act.sa_mask);
     act.sa_flags = 0;
     act.sa_handler = sigShutdownHandler;
+    /**
+     * SIGTERM是kill命令发送的系统默认终止信号
+     * 也就是在试图结束server时会触发的信号
+     * 对这类信号 redis并不是立即终止进程 而是做完一些必要的清理工作再退出程序
+     */
     sigaction(SIGTERM, &act, NULL);
     sigaction(SIGINT, &act, NULL);
 
@@ -5821,10 +5890,13 @@ void setupSignalHandlers(void) {
     act.sa_flags = SA_NODEFER | SA_RESETHAND | SA_SIGINFO;
     act.sa_sigaction = sigsegvHandler;
     if(server.crashlog_enabled) {
-        sigaction(SIGSEGV, &act, NULL);
-        sigaction(SIGBUS, &act, NULL);
-        sigaction(SIGFPE, &act, NULL);
-        sigaction(SIGILL, &act, NULL);
+        /**
+         * 下面几个信号是严重的错误 redis通过自定义的handler记录现场 然后执行必要的清理工作 最后再退出程序
+         */
+        sigaction(SIGSEGV, &act, NULL); // 无效内存引用
+        sigaction(SIGBUS, &act, NULL); // 硬件故障
+        sigaction(SIGFPE, &act, NULL); // 算数运算错误
+        sigaction(SIGILL, &act, NULL); // 执行非法硬件指令
         sigaction(SIGABRT, &act, NULL);
     }
     return;

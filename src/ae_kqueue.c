@@ -68,6 +68,7 @@ static int aeApiCreate(aeEventLoop *eventLoop) {
         zfree(state);
         return -1;
     }
+    // kqueue实例 mac系统多路复用实现
     state->kqfd = kqueue();
     if (state->kqfd == -1) {
         zfree(state->events);

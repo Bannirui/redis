@@ -3235,7 +3235,7 @@ void initServer(void) {
     adjustOpenFilesLimit();
     const char *clk_msg = monotonicInit();
     serverLog(LL_NOTICE, "monotonic clock: %s", clk_msg);
-    // 创建事件监听器
+    // 创建事件监听器 10_000+128
     server.el = aeCreateEventLoop(server.maxclients+CONFIG_FDSET_INCR);
     if (server.el == NULL) {
         serverLog(LL_WARNING,
@@ -3358,6 +3358,11 @@ void initServer(void) {
      * 注册serverCron函数
      * serverCron是个定期执行的函数 执行周期是100ms
      * 当前注册 在1ms之后调度serverCron
+     *
+     * 创建一个时间事件注册到事件管理器eventLoop上
+     * 由eventLoop来管理调度事件
+     *   - 期待该事件在1ms后被eventLoop事件管理器调度起来
+     *   - 具体的执行逻辑定义在serverCron中
      */
     if (aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL) == AE_ERR) {
         serverPanic("Can't create event loop timers.");

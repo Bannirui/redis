@@ -33,13 +33,20 @@
 #include <sys/event.h>
 #include <sys/time.h>
 
+// 可以理解成redis对不同OS平台的多路复用的抽象 借此屏蔽各个OS系统实现上的差异性
 typedef struct aeApiState {
     int kqfd;
+    // kevent系统调用之后就绪的fd存放的数组
     struct kevent *events;
 
     /* Events mask for merge read and write event.
      * To reduce memory consumption, we use 2 bits to store the mask
      * of an event, so that 1 byte will store the mask of 4 events. */
+    /**
+     * char数组 跟上面的events数组对应
+     * 对应关系是 一个kevnet对应一个char的2个bit 这2个bit用来保存kevent的就绪状态是可读还是可写
+     * 也就是说每4个fd占用1个byte来保存可读可写状态
+     */
     char *eventsMask; 
 } aeApiState;
 
@@ -129,22 +136,31 @@ static void aeApiDelEvent(aeEventLoop *eventLoop, int fd, int mask) {
     }
 }
 
+/**
+ * @brief IO复用器发生一次阻塞式系统调用 看看哪些fd就绪了
+ *        就绪的fd以fd为脚标放在了fired就绪数组中了
+ * @param eventLoop 事件管理器
+ * @param tvp 阻塞多久
+ * @return 就绪的fd数量
+ */
 static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
+    // OS系统的IO复用器实现的封装
     aeApiState *state = eventLoop->apidata;
     int retval, numevents = 0;
 
-    if (tvp != NULL) {
+    // 系统调用kevent OS会将注册在kqueue上的fd考察一遍 将就绪的fd放在events数组中
+    if (tvp != NULL) { // 带超时系统调用kevent
         struct timespec timeout;
         timeout.tv_sec = tvp->tv_sec;
         timeout.tv_nsec = tvp->tv_usec * 1000;
         retval = kevent(state->kqfd, NULL, 0, state->events, eventLoop->setsize,
-                        &timeout);
-    } else {
+                        &timeout); // 带超时系统调用
+    } else { // 永久阻塞实调用 直到结果有结果返回
         retval = kevent(state->kqfd, NULL, 0, state->events, eventLoop->setsize,
                         NULL);
     }
 
-    if (retval > 0) {
+    if (retval > 0) { // 有就绪fd
         int j;
 
         /* Normally we execute the read event first and then the write event.
@@ -154,13 +170,15 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
          * events, which would make it impossible to control the order of
          * reads and writes. So we store the event's mask we've got and merge
          * the same fd events later. */
+        // 遍历所有就绪的fd 把fd就绪状态事件类型整合到2个bit上 保存在eventsMask上
         for (j = 0; j < retval; j++) {
             struct kevent *e = state->events+j;
             int fd = e->ident;
             int mask = 0; 
 
-            if (e->filter == EVFILT_READ) mask = AE_READABLE;
-            else if (e->filter == EVFILT_WRITE) mask = AE_WRITABLE;
+            if (e->filter == EVFILT_READ) mask = AE_READABLE; // fd状态为可读
+            else if (e->filter == EVFILT_WRITE) mask = AE_WRITABLE; // fd状态为可写
+            // 将fd的可读可写状态压缩到2个bit上
             addEventMask(state->eventsMask, fd, mask);
         }
 
@@ -170,12 +188,12 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
         for (j = 0; j < retval; j++) {
             struct kevent *e = state->events+j;
             int fd = e->ident;
-            int mask = getEventMask(state->eventsMask, fd);
+            int mask = getEventMask(state->eventsMask, fd); // fd的可读可写状态
 
-            if (mask) {
+            if (mask) { // 将就绪fd记录到eventLoop管理器的就绪数组列表里面
                 eventLoop->fired[numevents].fd = fd;
                 eventLoop->fired[numevents].mask = mask;
-                resetEventMask(state->eventsMask, fd);
+                resetEventMask(state->eventsMask, fd); // 将复用器中存储就绪fd结果的状态置0 防止干扰到下一次系统调用结果
                 numevents++;
             }
         }

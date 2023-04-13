@@ -289,20 +289,36 @@ robj *dupStringObject(const robj *o) {
     }
 }
 
+/**
+ * @brief List列表对象
+ *        编码方式为quicklist
+ * @return
+ */
 robj *createQuicklistObject(void) {
-    quicklist *l = quicklistCreate();
-    robj *o = createObject(OBJ_LIST,l);
-    o->encoding = OBJ_ENCODING_QUICKLIST;
+    quicklist *l = quicklistCreate(); // 数据类型实现是quicklist
+    robj *o = createObject(OBJ_LIST,l); // 数据类型是List列表
+    o->encoding = OBJ_ENCODING_QUICKLIST; // 编码类型为quicklist
     return o;
 }
 
+/**
+ * @brief List列表对象
+ *        编码方式为ziplist
+ * @return
+ */
 robj *createZiplistObject(void) {
     unsigned char *zl = ziplistNew();
-    robj *o = createObject(OBJ_LIST,zl);
-    o->encoding = OBJ_ENCODING_ZIPLIST;
+    robj *o = createObject(OBJ_LIST,zl); // 数据类型为List列表
+    o->encoding = OBJ_ENCODING_ZIPLIST; // 编码方式为ziplist
     return o;
 }
 
+/**
+ * @brief Set集合对象
+ *        数据类型是set集合 数据结构实现是dict
+ *        编码类型是dict
+ * @return
+ */
 robj *createSetObject(void) {
     dict *d = dictCreate(&setDictType,NULL);
     robj *o = createObject(OBJ_SET,d);
@@ -310,6 +326,12 @@ robj *createSetObject(void) {
     return o;
 }
 
+/**
+ * @brief Set集合对象
+ *        数据类型是set集合 数据结构实现是intset
+ *        编码类型是intset
+ * @return
+ */
 robj *createIntsetObject(void) {
     intset *is = intsetNew();
     robj *o = createObject(OBJ_SET,is);
@@ -317,6 +339,13 @@ robj *createIntsetObject(void) {
     return o;
 }
 
+/**
+ * @brief Hash哈希对象
+ *        数据类型是hash
+ *        数据结构是ziplist
+ *        编码方式是ziplist
+ * @return
+ */
 robj *createHashObject(void) {
     unsigned char *zl = ziplistNew();
     robj *o = createObject(OBJ_HASH, zl);
@@ -324,6 +353,12 @@ robj *createHashObject(void) {
     return o;
 }
 
+/**
+ * @brief ZSet有序集合对象
+ *        数据类型是zset 数据结构实现是zset
+ *        编码实现是zskiplist
+ * @return
+ */
 robj *createZsetObject(void) {
     zset *zs = zmalloc(sizeof(*zs));
     robj *o;
@@ -335,6 +370,12 @@ robj *createZsetObject(void) {
     return o;
 }
 
+/**
+ * @brief ZSet有序集合对象
+ *        数据类型是zet 数据结构实现是ziplist
+ *        编码方式是ziplist
+ * @return
+ */
 robj *createZsetZiplistObject(void) {
     unsigned char *zl = ziplistNew();
     robj *o = createObject(OBJ_ZSET,zl);

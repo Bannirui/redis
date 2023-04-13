@@ -810,15 +810,27 @@ zskiplistNode *zslLastInLexRange(zskiplist *zsl, zlexrangespec *range) {
  * Ziplist-backed sorted set API
  *----------------------------------------------------------------------------*/
 
+/**
+ * @brief 字符串转整数
+ * @param vstr 字符串的字符数组形式
+ * @param vlen 字符串的长度
+ * @return
+ */
 double zzlStrtod(unsigned char *vstr, unsigned int vlen) {
     char buf[128];
     if (vlen > sizeof(buf))
         vlen = sizeof(buf);
     memcpy(buf,vstr,vlen);
     buf[vlen] = '\0';
-    return strtod(buf,NULL);
+    return strtod(buf,NULL); // 系统调用
  }
 
+ /**
+  * @brief zset的编码方式使用的是ziplist
+  *        将ziplist上存储的score值读出来
+  * @param sptr ziplist的entry节点地址
+  * @return score值
+  */
 double zzlGetScore(unsigned char *sptr) {
     unsigned char *vstr;
     unsigned int vlen;
@@ -826,11 +838,11 @@ double zzlGetScore(unsigned char *sptr) {
     double score;
 
     serverAssert(sptr != NULL);
-    serverAssert(ziplistGet(sptr,&vstr,&vlen,&vlong));
+    serverAssert(ziplistGet(sptr,&vstr,&vlen,&vlong)); // 将ziplist上sptr指向的entry节点内容读取出来
 
-    if (vstr) {
-        score = zzlStrtod(vstr,vlen);
-    } else {
+    if (vstr) { // entry上存储的是字符串
+        score = zzlStrtod(vstr,vlen); // 字符串转整数
+    } else { // entry上存储的是整数
         score = vlong;
     }
 
@@ -874,19 +886,35 @@ int zzlCompareElements(unsigned char *eptr, unsigned char *cstr, unsigned int cl
     return cmp;
 }
 
+/**
+ * @brief zset使用ziplist进行编码时 计算zset中存储的元素数量
+ *        ziplist中两两连续的entry用来表达zset中一个元素
+ *        [entry1, entry2]
+ *          - entry1是元素的值
+ *          - entry2是排序的score值
+ *        因此zset的元素数量是ziplist中entry数量的一半
+ * @param zl ziplist实例
+ * @return set中元素的数量
+ */
 unsigned int zzlLength(unsigned char *zl) {
     return ziplistLen(zl)/2;
 }
 
 /* Move to next entry based on the values in eptr and sptr. Both are set to
  * NULL when there is no next entry. */
+/**
+ * @brief zset编码方式为ziplist
+ * @param zl ziplist实例
+ * @param eptr ziplist的entry语义是zset元素的内容
+ * @param sptr ziplist的entry语义是zset元素的score
+ */
 void zzlNext(unsigned char *zl, unsigned char **eptr, unsigned char **sptr) {
     unsigned char *_eptr, *_sptr;
     serverAssert(*eptr != NULL && *sptr != NULL);
 
-    _eptr = ziplistNext(zl,*sptr);
+    _eptr = ziplistNext(zl,*sptr); // 上一个代表score的entry的后继节点就是新的元素entry
     if (_eptr != NULL) {
-        _sptr = ziplistNext(zl,_eptr);
+        _sptr = ziplistNext(zl,_eptr); // 元素entry的后继就是它对应的score
         serverAssert(_sptr != NULL);
     } else {
         /* No next entry. */
@@ -1123,6 +1151,15 @@ unsigned char *zzlDelete(unsigned char *zl, unsigned char *eptr) {
     return zl;
 }
 
+/**
+ * @brief zset编码方式是ziplist 写入元素
+ *        [zset元素值, zset元素score]这样entry对写入到ziplist中
+ * @param zl ziplist实例
+ * @param eptr zset是有序的 指定的eptr就是为了保证ziplist写入的entry节点位置
+ * @param ele zset元素值
+ * @param score zset元素score
+ * @return ziplist实例
+ */
 unsigned char *zzlInsertAt(unsigned char *zl, unsigned char *eptr, sds ele, double score) {
     unsigned char *sptr;
     char scorebuf[128];
@@ -1250,11 +1287,23 @@ unsigned char *zzlDeleteRangeByRank(unsigned char *zl, unsigned int start, unsig
  * Common sorted set API
  *----------------------------------------------------------------------------*/
 
+/**
+ * @brief 从代码实现上也可以看出zset的编码方式只有2种
+ *          - ziplist
+ *            - 在使用ziplist进行编码时
+ *            - 内存布局是ziplist中两两紧挨着的entry节点表达一个zset的元素
+ *            - 第一个ziplist的entry存放的是元素值
+ *            - 第二个ziplist的entry存放的是排序字段的值
+ *            - 按照升序方式编排zset的元素
+ *          - skiplist
+ * @param zobj
+ * @return 有序集合zset中的元素数量
+ */
 unsigned long zsetLength(const robj *zobj) {
     unsigned long length = 0;
-    if (zobj->encoding == OBJ_ENCODING_ZIPLIST) {
-        length = zzlLength(zobj->ptr);
-    } else if (zobj->encoding == OBJ_ENCODING_SKIPLIST) {
+    if (zobj->encoding == OBJ_ENCODING_ZIPLIST) { // 编码方式为ziplist
+        length = zzlLength(zobj->ptr); // ziplist中entry数量除以2
+    } else if (zobj->encoding == OBJ_ENCODING_SKIPLIST) { // 编码方式为zskiplist
         length = ((const zset*)zobj->ptr)->zsl->length;
     } else {
         serverPanic("Unknown sorted set encoding");
@@ -1262,6 +1311,13 @@ unsigned long zsetLength(const robj *zobj) {
     return length;
 }
 
+/**
+ * @brief zset的编码方式转换
+ *          - ziplist->zskiplist
+ *          - zskiplist->ziplist
+ * @param zobj
+ * @param encoding 要转换成哪种编码方式
+ */
 void zsetConvert(robj *zobj, int encoding) {
     zset *zs;
     zskiplistNode *node, *next;
@@ -1269,7 +1325,7 @@ void zsetConvert(robj *zobj, int encoding) {
     double score;
 
     if (zobj->encoding == encoding) return;
-    if (zobj->encoding == OBJ_ENCODING_ZIPLIST) {
+    if (zobj->encoding == OBJ_ENCODING_ZIPLIST) { // ziplist->zskiplist
         unsigned char *zl = zobj->ptr;
         unsigned char *eptr, *sptr;
         unsigned char *vstr;
@@ -1283,28 +1339,28 @@ void zsetConvert(robj *zobj, int encoding) {
         zs->dict = dictCreate(&zsetDictType,NULL);
         zs->zsl = zslCreate();
 
-        eptr = ziplistIndex(zl,0);
+        eptr = ziplistIndex(zl,0); // 第一个entry存储的是元素的值
         serverAssertWithInfo(NULL,zobj,eptr != NULL);
-        sptr = ziplistNext(zl,eptr);
+        sptr = ziplistNext(zl,eptr); // 第二个entry存储的score值
         serverAssertWithInfo(NULL,zobj,sptr != NULL);
 
-        while (eptr != NULL) {
-            score = zzlGetScore(sptr);
-            serverAssertWithInfo(NULL,zobj,ziplistGet(eptr,&vstr,&vlen,&vlong));
-            if (vstr == NULL)
-                ele = sdsfromlonglong(vlong);
-            else
-                ele = sdsnewlen((char*)vstr,vlen);
+        while (eptr != NULL) { // 迭代整个ziplist 找到所有的[元素, score]对
+            score = zzlGetScore(sptr); // 将ziplist上entry中存储的score值读出来
+            serverAssertWithInfo(NULL,zobj,ziplistGet(eptr,&vstr,&vlen,&vlong)); // 将ziplist上entry中存储的元素读取出来
+            if (vstr == NULL) // ziplist中entry存储的是整数
+                ele = sdsfromlonglong(vlong); // 整数转字符串
+            else // ziplist中entry存储的是字符串
+                ele = sdsnewlen((char*)vstr,vlen); // 字符串编码方式为sds
 
-            node = zslInsert(zs->zsl,score,ele);
-            serverAssert(dictAdd(zs->dict,ele,&node->score) == DICT_OK);
+            node = zslInsert(zs->zsl,score,ele); // 写入zskiplist
+            serverAssert(dictAdd(zs->dict,ele,&node->score) == DICT_OK); // 写入字典
             zzlNext(zl,&eptr,&sptr);
         }
 
         zfree(zobj->ptr);
         zobj->ptr = zs;
         zobj->encoding = OBJ_ENCODING_SKIPLIST;
-    } else if (zobj->encoding == OBJ_ENCODING_SKIPLIST) {
+    } else if (zobj->encoding == OBJ_ENCODING_SKIPLIST) { // zskiplist->ziplist
         unsigned char *zl = ziplistNew();
 
         if (encoding != OBJ_ENCODING_ZIPLIST)
@@ -1314,12 +1370,12 @@ void zsetConvert(robj *zobj, int encoding) {
          * the same time as creating the ziplist. */
         zs = zobj->ptr;
         dictRelease(zs->dict);
-        node = zs->zsl->header->level[0].forward;
+        node = zs->zsl->header->level[0].forward; // zskiplist的第一层就是一条双链表 node此时指向的是第一个数据节点
         zfree(zs->zsl->header);
         zfree(zs->zsl);
 
         while (node) {
-            zl = zzlInsertAt(zl,NULL,node->ele,node->score);
+            zl = zzlInsertAt(zl,NULL,node->ele,node->score); // 1个跳表节点拆成2个entry写到ziplist 取的时候是从跳表头->跳表尾 已经有序了 所以写ziplist的时候直接尾插就行
             next = node->level[0].forward;
             zslFreeNode(node);
             node = next;
@@ -1344,7 +1400,7 @@ void zsetConvertToZiplistIfNeeded(robj *zobj, size_t maxelelen, size_t totelelen
         maxelelen <= server.zset_max_ziplist_value &&
         ziplistSafeToAdd(NULL, totelelen))
     {
-        zsetConvert(zobj,OBJ_ENCODING_ZIPLIST);
+        zsetConvert(zobj,OBJ_ENCODING_ZIPLIST); // zset从zskiplist编码方式转换成ziplist
     }
 }
 

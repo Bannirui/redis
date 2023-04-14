@@ -1214,6 +1214,7 @@ struct redisServer {
                                    the actual 'hz' field value if dynamic-hz
                                    is enabled. */
     mode_t umask;               /* The umask value of the process on startup */
+    // serverCron这个周期性定时任务1s被执行多少次 默认值是10 也就是说定时任务期待每隔100ms被执行一次
     int hz;                     /* serverCron() calls frequency in hertz */
     int in_fork_child;          /* indication that this is a fork child */
     redisDb *db;
@@ -1255,6 +1256,7 @@ struct redisServer {
     // redis监听的知名端口6379
     int port;                   /* TCP listening port */
     int tls_port;               /* TLS listening port */
+    // 默认值511
     int tcp_backlog;            /* TCP listen() backlog */
     char *bindaddr[CONFIG_BINDADDR_MAX]; /* Addresses we should bind to */
     int bindaddr_count;         /* Number of addresses in server.bindaddr[] */

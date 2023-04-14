@@ -118,7 +118,7 @@ typedef struct aeTimeEvent {
     // 全局唯一id
     long long id; /* time event identifier. */
     /**
-     * 事件到达时间 微妙
+     * 事件到达时间 微秒
      * 也就是事件理论应该在什么事件被调度执行
      */
     monotime when;

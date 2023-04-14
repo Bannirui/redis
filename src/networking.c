@@ -125,6 +125,7 @@ client *createClient(connection *conn) {
      * contexts (for instance a Lua script) we need a non connected client. */
     if (conn) {
         connNonBlock(conn);
+        // 禁用Nagle算法
         connEnableTcpNoDelay(conn);
         if (server.tcpkeepalive)
             connKeepAlive(conn,server.tcpkeepalive);

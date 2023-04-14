@@ -2036,7 +2036,15 @@ void cronUpdateMemoryStats() {
  * so in order to throttle execution of things we want to do less frequently
  * a macro is used: run_with_period(milliseconds) { .... }
  */
-
+/**
+ * @brief
+ * @param eventLoop
+ * @param id
+ * @param clientData
+ * @return 该函数是时间事件的处理器 其返回值语义是告知eventLoop事件管理器在调度执行完一次时间事件之后 后续如何管理这个事件
+ *           - 返回1 标识时间事件是个定时事件 只执行一次 以后不用再执行
+ *           - 返回n 标识这个时间事件是个周期性事件 期待等个n毫秒之后再执行一次
+ */
 int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     int j;
     UNUSED(eventLoop);
@@ -2267,6 +2275,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
                           &ei);
 
     server.cronloops++;
+    // hz配置在redis.conf配置文件中 默认值是10 也就是这个定时任务1s执行10次 即每隔100ms执行一次
     return 1000/server.hz;
 }
 
@@ -3086,6 +3095,7 @@ int listenToPort(int port, socketFds *sfd) {
             closeSocketListeners(sfd);
             return C_ERR;
         }
+        // 设置非阻塞式模式
         anetNonBlock(NULL,sfd->fd[sfd->count]);
         anetCloexec(sfd->fd[sfd->count]);
         sfd->count++;
@@ -3355,14 +3365,11 @@ void initServer(void) {
      * operations incrementally, like clients timeout, eviction of unaccessed
      * expired keys and so forth. */
     /**
-     * 注册serverCron函数
-     * serverCron是个定期执行的函数 执行周期是100ms
-     * 当前注册 在1ms之后调度serverCron
-     *
      * 创建一个时间事件注册到事件管理器eventLoop上
      * 由eventLoop来管理调度事件
      *   - 期待该事件在1ms后被eventLoop事件管理器调度起来
      *   - 具体的执行逻辑定义在serverCron中
+     *     - 这个serverCron是周期性任务 每隔100ms执行一次
      */
     if (aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL) == AE_ERR) {
         serverPanic("Can't create event loop timers.");

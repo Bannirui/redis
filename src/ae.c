@@ -422,8 +422,9 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
             processed++; // 调度了事件数量计数
             now = getMonotonicUs();
             if (retval != AE_NOMORE) { // 是个周期性事件 更新期待被下一轮调度的事件
+                // 期待下次被调度执行的时间 微秒
                 te->when = now + retval * 1000;
-            } else { // 标识时间事件不是周期性事件 调度过一次就删除
+            } else { // 标识时间事件不是周期性事件 调度过一次就删除 在这个地方打上待删除标记 下一次遍历到的时候真正尝试删除操作
                 te->id = AE_DELETED_EVENT_ID;
             }
         }

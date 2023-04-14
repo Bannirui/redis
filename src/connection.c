@@ -92,7 +92,13 @@ connection *connCreateSocket() {
  * is not in an error state (which is not possible for a socket connection,
  * but could but possible with other protocols).
  */
+/**
+ * @brief 初始化连接状态为ACCEPTING 标识刚完成OS的accept系统调用而已
+ * @param fd
+ * @return connection实例
+ */
 connection *connCreateAcceptedSocket(int fd) {
+    // 创建connection实例 初始化了type为CT_Socket 后面在指定读写回调函数的时候要用到
     connection *conn = connCreateSocket();
     conn->fd = fd;
     conn->state = CONN_STATE_ACCEPTING;
@@ -235,15 +241,31 @@ static int connSocketSetWriteHandler(connection *conn, ConnectionCallbackFunc fu
 /* Register a read handler, to be called when the connection is readable.
  * If NULL, the existing handler is removed.
  */
+/**
+ * @brief 注册eventLoop事件管理器
+ *          - 注册到IO多路复用器上
+ *          - 指定发生可读事件时候的回调处理器connSocketEventHandler
+ *            - 它就是个分派器
+ *            - 读写真正怎么处理由connSocketEventHandler进行指派
+ * @param conn connection实例 里面
+ * @param func 回调处理器
+ * @return
+ */
 static int connSocketSetReadHandler(connection *conn, ConnectionCallbackFunc func) {
     if (func == conn->read_handler) return C_OK;
 
+    /**
+     * 将读事件处理器的回调放在了connection中
+     * 将来socket有IO事件就绪
+     *   - eventLoop回调connSocketEventHandler
+     *   - connSocketEventHandler发现读事件 就分派给func这个处理器执行
+     */
     conn->read_handler = func;
     if (!conn->read_handler)
         aeDeleteFileEvent(server.el,conn->fd,AE_READABLE);
     else
         if (aeCreateFileEvent(server.el,conn->fd,
-                    AE_READABLE,conn->type->ae_handler,conn) == AE_ERR) return C_ERR;
+                    AE_READABLE,conn->type->ae_handler,conn) == AE_ERR) return C_ERR; // 对读感兴趣 回调处理器是connSocketEventHandler
     return C_OK;
 }
 
@@ -251,6 +273,15 @@ static const char *connSocketGetLastError(connection *conn) {
     return strerror(conn->last_errno);
 }
 
+/**
+ * @brief IO分派器
+ *        socket就绪后 eventLoop回调的就是这个函数
+ *        至于读写具体执行逻辑 由这个函数进行分派
+ * @param el eventLoop事件管理器
+ * @param fd socket
+ * @param clientData 文件事件当初注册在eventLoop时设置了私有数据 就是用在eventLoop回调时候传参的
+ * @param mask socket是可读还是可写
+ */
 static void connSocketEventHandler(struct aeEventLoop *el, int fd, void *clientData, int mask)
 {
     UNUSED(el);
@@ -292,7 +323,7 @@ static void connSocketEventHandler(struct aeEventLoop *el, int fd, void *clientD
 
     /* Handle normal I/O flows */
     if (!invert && call_read) {
-        if (!callHandler(conn, conn->read_handler)) return;
+        if (!callHandler(conn, conn->read_handler)) return; // 回调readQueryFromClient
     }
     /* Fire the writable event. */
     if (call_write) {
@@ -345,8 +376,12 @@ static int connSocketGetType(connection *conn) {
     return CONN_TYPE_SOCKET;
 }
 
+/**
+ * 初始化connection赋值给了type字段
+ * 在将socket注册eventLoop时依赖的就是这个
+ */
 ConnectionType CT_Socket = {
-    .ae_handler = connSocketEventHandler,
+    .ae_handler = connSocketEventHandler, // 这个是核心 将来IO多路复用器阻塞调用出来的就绪socket 被eventLoop回调函数就是这个 它起到了分派器的作用
     .close = connSocketClose,
     .write = connSocketWrite,
     .read = connSocketRead,

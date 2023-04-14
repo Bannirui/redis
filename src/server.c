@@ -3025,10 +3025,29 @@ void closeSocketListeners(socketFds *sfd) {
 
 /* Create an event handler for accepting new connections in TCP or TLS domain sockets.
  * This works atomically for all socket fds */
+/**
+ * @brief 服务端被动式socket添加到事件管理器 委托事件管理器注册到IO多路复用器上
+ *        当有客户端向客户端发起连接时
+ *        该服务端socket被IO复用器选中 触发的事件为可读
+ *        事件管理器eventLoop回调指定的处理器 由处理器实现连接请求的处理
+ * @param sfd 服务端被动socket
+ * @param accept_handler 负责处理客户端发起的连接请求
+ * @return 操作状态码
+ *         0-成功
+ *         -1-失败
+ */
 int createSocketAcceptHandler(socketFds *sfd, aeFileProc *accept_handler) {
     int j;
 
     for (j = 0; j < sfd->count; j++) {
+        /**
+         * 将服务端socket注册到事件管理器eventLoop上
+         * eventLoop将socket注册到系统的IO多路复用器上
+         *   - 关注该socket的可读事件 将来某个时机客户端发来的连接请求 从服务端视角来看就是serverSocket可读
+         * 指定回调处理器accept_handler
+         *   - 将来serverSocket可读时 eventLoop会从带超时的IO复用器系统调用上跳出阻塞点
+         *   - eventLoop回调accept_handler来处理客户端的tcp连接请求
+         */
         if (aeCreateFileEvent(server.el, sfd->fd[j], AE_READABLE, accept_handler,NULL) == AE_ERR) {
             /* Rollback */
             for (j = j-1; j >= 0; j--) aeDeleteFileEvent(server.el, sfd->fd[j], AE_READABLE);
@@ -3383,6 +3402,11 @@ void initServer(void) {
      *   - 服务端口
      *   - ssl端口
      *   - unix端口
+     * 通过IO多路复用器关注服务端socket上的可读事件 也就是客户端发过来的连接请求
+     * 至于服务端如何处理收到的连接请求 将来由eventLoop事件管理器负责回调此时指定的处理器
+     *   - acceptTcpHandler
+     *   - acceptTLSHandler
+     *   - acceptUnixHandler
      */
     if (createSocketAcceptHandler(&server.ipfd, acceptTcpHandler) != C_OK) {
         serverPanic("Unrecoverable error creating TCP socket accept handler.");

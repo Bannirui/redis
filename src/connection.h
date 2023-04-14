@@ -70,8 +70,22 @@ typedef struct ConnectionType {
     int (*get_type)(struct connection *conn);
 } ConnectionType;
 
+/**
+ * 对socket的封装
+ * 对于服务端而言
+ *   - 被动socket接收到连接请求后 通过accept系统调用创建了socket
+ *   - 对于OS而言accept系统调用之后就已经建立好了连接
+ *   - 到那时对于redis而言还不够 因此在将connection流转处理过程中通过state标识状态
+ */
 struct connection {
+    /**
+     * 在指定注册eventLoop事件管理器之前
+     * 要先指定读写事件处理器回调函数 到时候要用到这个type
+     *   - 对于服务端 实例话connection时候指定type是CT_Socket
+     *   - 对于客户端
+     */
     ConnectionType *type;
+    // redis定义的连接状态
     ConnectionState state;
     short int flags;
     short int refs;
@@ -80,6 +94,11 @@ struct connection {
     ConnectionCallbackFunc conn_handler;
     ConnectionCallbackFunc write_handler;
     ConnectionCallbackFunc read_handler;
+    /**
+     * socket的fd
+     *   - 服务端是被动socket收到连接请求后通过accept系统调用fork出来的socket
+     *   - 客户端是主动式socket系统调用创建的socket
+     */
     int fd;
 };
 
@@ -162,7 +181,24 @@ static inline int connSetWriteHandler(connection *conn, ConnectionCallbackFunc f
 /* Register a read handler, to be called when the connection is readable.
  * If NULL, the existing handler is removed.
  */
+/**
+ * @brief 借助CT_Socket
+ *          - 注册分派器connSocketEventHandler给eventLoop
+ *          - 注册读回调处理器func给分派器connSocketEventHandler
+ *            - 将来connSocketEventHandler将读事件分派给func执行
+ * @param conn 在初始化connection实例的时候对type赋值CT_Socket 通过它完成对回调函数的指定
+ * @param func 读事件的回调
+ * @return
+ */
 static inline int connSetReadHandler(connection *conn, ConnectionCallbackFunc func) {
+    /**
+     * connSocketSetReadHandler的执行触发了真正的socket注册eventLoop
+     *   - 向eventLoop登记了要注册的socket
+     *   - 向IO多路复用器注册socket
+     *     - 关注socket
+     *     - 关注读事件
+     *   - 回调函数是分派器connSocketEventHandler
+     */
     return conn->type->set_read_handler(conn, func);
 }
 

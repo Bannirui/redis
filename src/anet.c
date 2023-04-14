@@ -397,13 +397,24 @@ int anetUnixGenericConnect(char *err, const char *path, int flags)
     return s;
 }
 
+/**
+ * @brief
+ * @param err 负责将系统调用的错误码传递出去
+ * @param s
+ * @param sa
+ * @param len
+ * @param backlog listen等待队列大小
+ * @return
+ */
 static int anetListen(char *err, int s, struct sockaddr *sa, socklen_t len, int backlog) {
+    // socket系统调用 绑定到指定地址上
     if (bind(s,sa,len) == -1) {
         anetSetError(err, "bind: %s", strerror(errno));
         close(s);
         return ANET_ERR;
     }
 
+    // listen系统调用 将主动socket转换为被动socket 负责监听连接请求
     if (listen(s, backlog) == -1) {
         anetSetError(err, "listen: %s", strerror(errno));
         close(s);
@@ -442,11 +453,13 @@ static int _anetTcpServer(char *err, int port, char *bindaddr, int af, int backl
         return ANET_ERR;
     }
     for (p = servinfo; p != NULL; p = p->ai_next) {
+        // socket系统调用创建socket实例
         if ((s = socket(p->ai_family,p->ai_socktype,p->ai_protocol)) == -1)
             continue;
 
         if (af == AF_INET6 && anetV6Only(err,s) == ANET_ERR) goto error;
         if (anetSetReuseAddr(err,s) == ANET_ERR) goto error;
+        // bind到指定上 并将socket转换为被动socket 负责监听连接请求
         if (anetListen(err,s,p->ai_addr,p->ai_addrlen,backlog) == ANET_ERR) s = ANET_ERR;
         goto end;
     }

@@ -3075,6 +3075,14 @@ int createSocketAcceptHandler(socketFds *sfd, aeFileProc *accept_handler) {
  * impossible to bind, or no bind addresses were specified in the server
  * configuration but the function is not able to bind * for at least
  * one of the IPv4 or IPv6 protocols. */
+/**
+ * @brief 创建socket监听指定端口port
+ * @param port 服务端socket要监听的端口
+ * @param sfd 创建好的socket
+ * @return 操作状态码
+ *         0-成功
+ *         -1-失败
+ */
 int listenToPort(int port, socketFds *sfd) {
     int j;
     char **bindaddr = server.bindaddr;
@@ -3091,6 +3099,12 @@ int listenToPort(int port, socketFds *sfd) {
         char* addr = bindaddr[j];
         int optional = *addr == '-';
         if (optional) addr++;
+        /**
+         * socket编程服务端
+         *   - 创建socket实例
+         *   - bind
+         *   - listen
+         */
         if (strchr(addr,':')) {
             /* Bind IPv6 address. */
             sfd->fd[sfd->count] = anetTcp6Server(server.neterr,port,addr,server.tcp_backlog);
@@ -3114,7 +3128,7 @@ int listenToPort(int port, socketFds *sfd) {
             closeSocketListeners(sfd);
             return C_ERR;
         }
-        // 设置非阻塞式模式
+        // 设置非阻塞式模式 借助系统control函数
         anetNonBlock(NULL,sfd->fd[sfd->count]);
         anetCloexec(sfd->fd[sfd->count]);
         sfd->count++;

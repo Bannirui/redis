@@ -137,8 +137,11 @@ typedef long long ustime_t; /* microsecond time type. */
 
 /* Instantaneous metrics tracking. */
 #define STATS_METRIC_SAMPLES 16     /* Number of samples per metric. */
+// 指标是什么-执行的命令个数
 #define STATS_METRIC_COMMAND 0      /* Number of commands executed. */
+// 指标是什么-读流量
 #define STATS_METRIC_NET_INPUT 1    /* Bytes read to network .*/
+// 指标是什么-写流量
 #define STATS_METRIC_NET_OUTPUT 2   /* Bytes written to network. */
 #define STATS_METRIC_COUNT 3
 
@@ -490,6 +493,19 @@ typedef enum {
 /* Using the following macro you can run code inside serverCron() with the
  * specified period, specified in milliseconds.
  * The actual resolution depends on server.hz. */
+/**
+ * @brief 这个宏用来控制serverCron里面小任务多久执行一次
+ *        首先界定一件事情 hz在redis.conf配置文件中定义的默认值是10 也就意味着serverCron这个大定时任务每隔100ms会被main线程执行一次
+ *        这个宏函数就是用来控制某个小任务间隔多久执行一次的
+ *          - 场景1 ms==10 间隔<serverCron的运行间隔 也就是说所有小任务的间隔时间下限就是serverCron的运行间隔时间 单独设置小任务的间隔时间 只有更大才有客制化意义
+ *          - 场景2 ms==100 间隔==serverCron的运行间隔 跟场景1一样
+ *          - 场景3 ms==1000 代入表达式 即意味着cronloops得是10的整数倍才能运行小任务 也就是小任务运行间隔是10轮大任务的间隔时间 即10*100=1000ms
+ *          - 场景4 ms=1001 代入表达式 向下取整 同场景3
+ *          - 场景5 ms=5000 代入表达式 小任务的运行间隔是50轮大任务运行间隔 即50轮*100ms=5000ms
+ *        那也就意味着
+ *        当我们觉得小任务运行间隔时间需要客制化时候 并且明显不需要像serverCron大任务一样频繁的时候 就传递一个大任务运行间隔的整数倍的间隔参数
+ * @param ms 希望小任务多久执行一次 单位ms
+ */
 #define run_with_period(_ms_) if ((_ms_ <= 1000/server.hz) || !(server.cronloops%((_ms_)/(1000/server.hz))))
 
 /* We can print the stacktrace, so our assert is defined this way: */
@@ -1209,7 +1225,9 @@ struct redisServer {
     char *configfile;           /* Absolute config file path, or NULL */
     char *executable;           /* Absolute executable file path. */
     char **exec_argv;           /* Executable argv vector (copy). */
+    // 默认false 是否开启动态调整serverCron的执行频率 动态的依据是服务端根据要处理的通信的客户端数量决定 客户端数量越多 就适当增加serverCron执行频率
     int dynamic_hz;             /* Change hz value depending on # of clients. */
+    // 默认值10 用在动态调整serverCron执行频率场景 作为基准的hz 在此基准上进行调整
     int config_hz;              /* Configured HZ value. May be different than
                                    the actual 'hz' field value if dynamic-hz
                                    is enabled. */
@@ -1230,6 +1248,7 @@ struct redisServer {
     int active_defrag_running;  /* Active defragmentation running (holds current scan aggressiveness) */
     char *pidfile;              /* PID file path */
     int arch_bits;              /* 32 or 64 depending on sizeof(long) */
+    // 记录serverCron定时任务执行了多少次
     int cronloops;              /* Number of times the cron function run */
     char runid[CONFIG_RUN_ID_SIZE+1];  /* ID always different at every exec. */
     // 1标识启用哨兵模式
@@ -1322,6 +1341,7 @@ struct redisServer {
     long long stat_active_defrag_key_hits;  /* number of keys with moved allocations */
     long long stat_active_defrag_key_misses;/* number of keys scanned and not moved */
     long long stat_active_defrag_scanned;   /* number of dictEntries scanned */
+    // 服务端内存使用峰值
     size_t stat_peak_memory;        /* Max used memory record */
     long long stat_fork_time;       /* Time needed to perform latest fork() */
     double stat_fork_rate;          /* Fork rate in GB/sec. */
@@ -1355,10 +1375,20 @@ struct redisServer {
     redisAtomic long long stat_total_writes_processed; /* Total number of write events processed */
     /* The following two are used to track instantaneous metrics, like
      * number of operations per second, network traffic. */
+    /**
+     * inst_metric数组放了3个服务端的指标
+     *   - 0号脚标-记录了服务端的命令个数
+     *   - 1号脚标-记录了服务端读流量
+     *   - 2号脚标-记录了服务端写流量
+     */
     struct {
+        // 指标上一次采样时间
         long long last_sample_time; /* Timestamp of last sample in ms */
+        // 上次采样记录的值
         long long last_sample_count;/* Count in last sample */
+        // 每次采样的都计算成每秒多少将结果留存 将一批结果留存下来方便以后看时序和计算均值
         long long samples[STATS_METRIC_SAMPLES];
+        // 为了用来自增然后对着samples取模留存计算结果
         int idx;
     } inst_metric[STATS_METRIC_COUNT];
     /* Configuration */

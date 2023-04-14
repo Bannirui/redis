@@ -1641,21 +1641,32 @@ int allPersistenceDisabled(void) {
 /* ======================= Cron: called every 100 ms ======================== */
 
 /* Add a sample to the operations per second array of samples. */
+/**
+ * @brief
+ * @param metric inst_metric中存放了3个指标 当前要更新的是哪个指标
+ *               0-每秒执行的命令个数
+ *               1-读流量
+ *               2-写流量
+ * @param current_reading 指标当前的值是多少
+ */
 void trackInstantaneousMetric(int metric, long long current_reading) {
     long long now = mstime();
+    // 上次采样到这次采样的间隔时间 毫秒
     long long t = now - server.inst_metric[metric].last_sample_time;
+    // 两次采样的指标值差异
     long long ops = current_reading -
                     server.inst_metric[metric].last_sample_count;
     long long ops_sec;
 
+    // 将指标换算成每秒多少的指标值
     ops_sec = t > 0 ? (ops*1000/t) : 0;
 
     server.inst_metric[metric].samples[server.inst_metric[metric].idx] =
-        ops_sec;
+        ops_sec; // 换算成每秒多少将指标留存
     server.inst_metric[metric].idx++;
     server.inst_metric[metric].idx %= STATS_METRIC_SAMPLES;
-    server.inst_metric[metric].last_sample_time = now;
-    server.inst_metric[metric].last_sample_count = current_reading;
+    server.inst_metric[metric].last_sample_time = now; // 记录这次采样的时间戳 毫秒
+    server.inst_metric[metric].last_sample_count = current_reading; // 记录这次采样的值
 }
 
 /* Return the mean of all the samples. */
@@ -1984,12 +1995,17 @@ void checkChildrenDone(void) {
 }
 
 /* Called from serverCron and loadingCron to update cached memory metrics. */
+/**
+ * @brief 采集内存使用相关信息
+ *          - 记录内存使用峰值 main线程 serverCron大任务执行频率
+ *          - 内存的使用信息 main线程 每隔100ms
+ */
 void cronUpdateMemoryStats() {
     /* Record the max memory used since the server was started. */
     if (zmalloc_used_memory() > server.stat_peak_memory)
         server.stat_peak_memory = zmalloc_used_memory();
 
-    run_with_period(100) {
+    run_with_period(100) { // 每隔100ms执行
         /* Sample the RSS and other metrics here since this is a relatively slow call.
          * We must sample the zmalloc_used at the same time we take the rss, otherwise
          * the frag ratio calculate may be off (ratio of two samples at different times) */
@@ -2037,10 +2053,27 @@ void cronUpdateMemoryStats() {
  * a macro is used: run_with_period(milliseconds) { .... }
  */
 /**
- * @brief
- * @param eventLoop
- * @param id
- * @param clientData
+ * @brief 事件管理器eventLoop面向的是事件的管理
+ *          - 时间事件是自己亲自管理
+ *          - 文件事件的管理主要委托给OS的IO复用器 而自己本身工作中心在于就绪事件的调度
+ *        因此需要明确知道时间事件的id
+ *        eventLoop才能根据时间事件id在自己管理范围内找到时间事件
+ *        当初注册时间事件的时候指定过私有数据
+ *        此刻eventLoop回调函数的时候就可以使用私有数据了
+ *
+ *        这个serverCron是redis服务端的一个大的定时任务 这个大的任务执行线程仍然是main线程 其中定义了很多小的任务
+ *          - 看门狗
+ *            - 默认不开启
+ *          - 服务端性能指标采集
+ *            - 每秒执行的命令个数  main线程执行   每100ms执行一次
+ *            - 每秒读流量         main线程执行   每100ms执行一次
+ *            - 每秒写流量         main线程执行   每100ms执行一次
+ *          - 内存相关信息采集
+ *            - 内存使用峰值       main线程执行    大任务执行频率
+ *            - 使用使用信息       main线程执行    每100ms执行一次
+ * @param eventLoop 事件管理器
+ * @param id 时间事件的id
+ * @param clientData 向eventLoop注册时间事件时候指定的私有数据 就是用在函数回调的时候的
  * @return 该函数是时间事件的处理器 其返回值语义是告知eventLoop事件管理器在调度执行完一次时间事件之后 后续如何管理这个事件
  *           - 返回1 标识时间事件是个定时事件 只执行一次 以后不用再执行
  *           - 返回n 标识这个时间事件是个周期性事件 期待等个n毫秒之后再执行一次
@@ -2053,15 +2086,27 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 
     /* Software watchdog: deliver the SIGALRM that will reach the signal
      * handler if we don't return here fast enough. */
+    /**
+     * 看门狗
+     * 默认不开启
+     */
     if (server.watchdog_period) watchdogScheduleSignal(server.watchdog_period);
 
     /* Update the time cache. */
+    /**
+     * 将系统时间缓存在服务端
+     * 很多地方都要用到这个时间 缓存起来 避免了每次使用都要一次系统调用的开销
+     */
     updateCachedTime(1);
 
+    /**
+     * 动态调整serverCron的运行频率
+     * 跟当前服务端通信的客户端越多 定时任务执行的频率越快
+     */
     server.hz = server.config_hz;
     /* Adapt the server.hz value to the number of configured clients. If we have
      * many clients, we want to call serverCron() with an higher frequency. */
-    if (server.dynamic_hz) {
+    if (server.dynamic_hz) { // 默认false 不开启动态调整serverCron执行频率
         while (listLength(server.clients) / server.hz >
                MAX_CLIENTS_PER_CLOCK_TICK)
         {
@@ -2073,14 +2118,17 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         }
     }
 
-    run_with_period(100) {
+    run_with_period(100) { // 每100ms执行一次
         long long stat_net_input_bytes, stat_net_output_bytes;
         atomicGet(server.stat_net_input_bytes, stat_net_input_bytes);
         atomicGet(server.stat_net_output_bytes, stat_net_output_bytes);
 
+        // main线程执行 记录每秒执行的命令个数
         trackInstantaneousMetric(STATS_METRIC_COMMAND,server.stat_numcommands);
+        // main线程执行 记录读流量
         trackInstantaneousMetric(STATS_METRIC_NET_INPUT,
                 stat_net_input_bytes);
+        // main线程执行 记录写流量
         trackInstantaneousMetric(STATS_METRIC_NET_OUTPUT,
                 stat_net_output_bytes);
     }
@@ -2099,6 +2147,11 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     unsigned int lruclock = getLRUClock();
     atomicSet(server.lruclock,lruclock);
 
+    /**
+     * 采集内存使用相关信息
+     *   - 记录内存使用峰值 main线程 serverCron大任务执行频率
+     *   - 内存的使用信息  main线程  每隔100ms
+     */
     cronUpdateMemoryStats();
 
     /* We received a SIGTERM, shutting down here in a safe way, as it is
@@ -2274,6 +2327,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
                           0,
                           &ei);
 
+    // 记录serverCron这个大定时任务执行了多少次
     server.cronloops++;
     // hz配置在redis.conf配置文件中 默认值是10 也就是这个定时任务1s执行10次 即每隔100ms执行一次
     return 1000/server.hz;

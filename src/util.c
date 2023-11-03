@@ -781,15 +781,17 @@ sds getAbsolutePath(char *filename) {
  * Gets the proper timezone in a more portable fashion
  * i.e timezone variables are linux specific.
  */
+// 和Greenwich时间差了多少秒
 long getTimeZone(void) {
 #if defined(__linux__) || defined(__sun)
     return timezone;
 #else
+    // TODO: 2023/11/3 在macos上gettimeofday库函数调用是可以传NULL值给第一个形参的 则没必要定义一个timeval的变量
     struct timeval tv;
     struct timezone tz;
 
     gettimeofday(&tv, &tz);
-
+	// 库函数返回的是相对Greenwich时间差了多少分钟 转换为秒作单位
     return tz.tz_minuteswest * 60L;
 #endif
 }

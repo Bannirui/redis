@@ -403,8 +403,10 @@ void loadServerConfigFromString(char *config) {
 
     /**
      * 以换行符为切割符切割config配置内容
-     *   - 切割的子串结果放在lines这个数组里面
-     *   - 切割的子串数量放在totlines中
+     * <ul>
+     *   <li>切割的子串结果放在lines这个数组里面</li>
+     *   <li>切割的子串数量放在totlines中</li>
+     * </ul>
      */
     lines = sdssplitlen(config,strlen(config),"\n",1,&totlines);
 
@@ -657,9 +659,9 @@ loaderr:
  * empty. This way loadServerConfig can be used to just load a file or
  * just load a string. */
 /**
- * @brief 将指定配置地方的配置内容都读取到sds中 然后统一将配置内容加载到redisServer实例的字段中
- * @param filename 配置来源-文件
- * @param config_from_stdin 配置来源-命令行标准输入
+ * 将指定配置地方的配置内容都读取到sds中 然后统一将配置内容加载到redisServer实例的字段中
+ * @param filename 配置来源-配置文件(配置文件绝对路径)
+ * @param config_from_stdin 配置来源-启动程序时候的命令行参数
  * @param options 配置来源-字符串
  */
 void loadServerConfig(char *filename, char config_from_stdin, char *options) {

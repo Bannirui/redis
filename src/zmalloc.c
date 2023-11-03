@@ -93,7 +93,8 @@ static void zmalloc_default_oom(size_t size) {
     abort();
 }
 
-// 内存OOM处理器
+// 定义函数指针 指针变量指向的函数在发生OOM时被调用 则该函数就是名义上的OOM处理器
+// 决定了发生内存OOM时怎么处理
 static void (*zmalloc_oom_handler)(size_t) = zmalloc_default_oom;
 
 /* Try allocating memory, and return NULL if failed.
@@ -341,8 +342,8 @@ size_t zmalloc_used_memory(void) {
 }
 
 /**
- * @brief 注册内存OOM回调函数
- * @param oom_handler 发生OOM时的处理器
+ * 注册内存OOM回调函数
+ * @param oom_handler 函数指针 发生OOM时的处理器
  */
 void zmalloc_set_oom_handler(void (*oom_handler)(size_t)) {
     zmalloc_oom_handler = oom_handler;

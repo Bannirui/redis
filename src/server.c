@@ -1205,17 +1205,31 @@ err:
 }
 
 /* Return the UNIX time in microseconds */
+// 当前系统时间(微秒)
 long long ustime(void) {
     struct timeval tv;
     long long ust;
 
+	/**
+	 * 库函数调用 获取当前系统时间
+	 * 这个函数既可以返回时间信息又可以返回时区信息
+	 * 第一个形参为timeval的指针变量 第二个形参为timezone的指针变量
+	 * <ul>
+	 *   <li>timeval和timezone两个参数 该库函数会填充两个结构体</li>
+	 *   <li>只传timeval 该库函数只会填充时间信息</li>
+	 *   <li>只传timezone 该库函数只会填充时区信息</li>
+	 *   <li>两个参数都是NULL 该库函数啥也不干</li>
+	 * </ul>
+	 */
     gettimeofday(&tv, NULL);
+	// 当前时间的微秒表示
     ust = ((long long)tv.tv_sec)*1000000;
     ust += tv.tv_usec;
     return ust;
 }
 
 /* Return the UNIX time in milliseconds */
+// 当前系统时间(毫秒)
 mstime_t mstime(void) {
     return ustime()/1000;
 }
@@ -1650,6 +1664,7 @@ int allPersistenceDisabled(void) {
  * @param current_reading 指标当前的值是多少
  */
 void trackInstantaneousMetric(int metric, long long current_reading) {
+    // 当前系统时间(毫秒)
     long long now = mstime();
     // 上次采样到这次采样的间隔时间 毫秒
     long long t = now - server.inst_metric[metric].last_sample_time;
@@ -1924,10 +1939,15 @@ void databasesCron(void) {
  * info or not using the 'update_daylight_info' argument. Normally we update
  * such info only when calling this function from serverCron() but not when
  * calling it from call(). */
+// 把系统时间缓存到server实例中
 void updateCachedTime(int update_daylight_info) {
+    // 微秒形式
     server.ustime = ustime();
+    // 毫秒形式
     server.mstime = server.ustime / 1000;
+    // 秒形式
     time_t unixtime = server.mstime / 1000;
+	// 原子赋值操作
     atomicSet(server.unixtime, unixtime);
 
     /* To get information about daylight saving time, we need to call
@@ -1938,6 +1958,14 @@ void updateCachedTime(int update_daylight_info) {
     if (update_daylight_info) {
         struct tm tm;
         time_t ut = server.unixtime;
+		/**
+		 * localtime_r()库函数将时间的秒形式转换成tm描述形式
+		 * tm_isdst标识了是否是夏令时(DST)
+		 * <ul>
+		 *   <li>0 不是DST</li>
+		 *   <li>1 是DST</li>
+		 * </ul>
+		 */
         localtime_r(&ut,&tm);
         server.daylight_active = tm.tm_isdst;
     }
@@ -2712,6 +2740,7 @@ void initServerConfig(void) {
                                       updated later after loading the config.
                                       This value may be used before the server
                                       is initialized. */
+    // 系统时间相对Greenwich相差了多少秒
     server.timezone = getTimeZone(); /* Initialized by tzset(). */
     server.configfile = NULL;
     server.executable = NULL;
@@ -6184,8 +6213,9 @@ void loadDataFromDisk(void) {
 }
 
 /**
- * @brief 发生内存OOM时的处理器
- * @param allocation_size
+ * 发生内存OOM时的处理器
+ * OOM发生的时机锚点肯定是应用程序申请内存时发现可分配的内存空间不满足申请的大小
+ * @param allocation_size 此次申请的内存大小(Byte)
  */
 void redisOutOfMemoryHandler(size_t allocation_size) {
     serverLog(LL_WARNING,"Out Of Memory allocating %zu bytes!",
@@ -6380,27 +6410,40 @@ redisTestProc *getTestProcByName(const char *name) {
 #endif
 
 /**
- * @brief 服务端启动流程
- *   - 1 注册发生内存OOM的回调函数
- *   - 2 检测是否以哨兵模式启动服务端
- *   - 3 初始化server配置
- *   - 4 初始化ACL子系统
- *   - 5 初始化依赖模块
- *   - 6 初始化SSL
- *   - 7 初始化哨兵配置
- *   - 8 检测是否开启RDB和AOF文件检测
- *   - 9 解析配置文件redis.conf配置项
- *   - 10 加载哨兵模式配置项
- *   - 11 是否以后台进程方式运行服务端
- *   - 12 初始化server服务
- *   - 13 加载本地数据到内存数据库
- *   - 14 开启事件监听器
- *   - 15 删除事件监听器
- * @param argc
- * @param argv
- * @return
+ * <p>服务端启动流程</p>
+ * <ul>
+ *   <li>1 注册发生内存OOM的回调函数</li>
+ *   <li>2 检测是否以哨兵模式启动服务端</li>
+ *   <li>3 初始化server配置</li>
+ *   <li>4 初始化ACL子系统</li>
+ *   <li>5 初始化依赖模块</li>
+ *   <li>6 初始化SSL</li>
+ *   <li>7 初始化哨兵配置</li>
+ *   <li>8 检测是否开启RDB和AOF文件检测</li>
+ *   <li>9 解析配置文件redis.conf配置项</li>
+ *   <li>10 加载哨兵模式配置项</li>
+ *   <li>11 是否以后台进程方式运行服务端</li>
+ *   <li>12 初始化server服务</li>
+ *   <li>13 加载本地数据到内存数据库</li>
+ *   <li>14 开启事件监听器</li>
+ *   <li>15 删除事件监听器</li>
+ * </ul>
+ * <ul>关于启动参数
+ *   <li>直接启动可执行文件 形如./redis-server 则argc=1
+ *     <ul>
+ *       <li>argv[0] 可执行文件的绝对路径</li>
+ *     </ul>
+ *   </li>
+ *   <li>单机版启动时候一般就带着一个配置文件 形如./redis-server $ProjectFileDir$/redis.conf 即argc=2
+ *     <ul>
+ *       <li>argv[0] 可执行文件的绝对路径</li>
+ *       <li>argv[1] 命令行参数指定的配置文件路径</li>
+ *     </ul>
+ *   </li>
+ * </ul>
  */
 int main(int argc, char **argv) {
+    // 记录当前系统时间
     struct timeval tv;
     int j;
     char config_from_stdin = 0;
@@ -6473,12 +6516,14 @@ int main(int argc, char **argv) {
     getRandomBytes(hashseed,sizeof(hashseed));
     dictSetHashFunctionSeed(hashseed);
     /**
-     * 是否启动哨兵模式
-     *   - 执行的redis-sentinel可执行文件
-     *   - 启动参数配置了可选项--sentinel
+     * <p>是否启动哨兵模式</p>
+     * <ul>
+     *   <li>执行的redis-sentinel可执行文件</li>
+     *   <li>启动参数配置了可选项--sentinel</li>
+     * </ul>
      */
     server.sentinel_mode = checkForSentinelMode(argc,argv);
-    // 初始化server配置 填充redisServer中的字段
+	// extern struct redisServer server 已经创建了server的全局实例 对其进行字段填充
     initServerConfig();
     // ACL子系统初始化
     ACLInit(); /* The ACL subsystem must be initialized ASAP because the

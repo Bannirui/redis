@@ -698,12 +698,20 @@ typedef struct redisObject {
     // 数据编码方式
     unsigned encoding:4;
     /**
-     * @brief 配合内存淘汰策略使用的
-     *          - LFU
-     *            - 高16位 记录访问数据的时间戳 单位分钟
-     *            - 低8位 记录访问数据频率
-     *          - LRU
-     *            - 记录访问数据的时间戳 单位秒 24位
+     * <p>配合内存淘汰策略使用的</p>
+     * <ul>
+     *   <li>LFU
+     *     <ul>
+     *       <li>高16位 记录访问数据的时间戳 单位分钟</li>
+     *       <li>低8位 记录访问数据频率</li>
+     *     </ul>
+     *   </li>
+     *   <li>LRU
+     *     <ul>
+     *       <li>记录访问数据的时间戳 单位秒 24位</li>
+     *     </ul>
+     *   </li>
+     * </ul>
      */
     unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or
                             * LFU data (least significant 8 bits frequency
@@ -711,9 +719,17 @@ typedef struct redisObject {
     // 数据的引用计数
     int refcount;
     /**
-     * 指向数据类型的编码方式的实现上
-     *   - sds字符串而言 指向的是sds 而sds指针指向的又是sds的buf数组
-     *   - 其他编码方式 指向的就是数据结构实例 比如quicklist\dict\ziplist
+     * <p>指向数据类型的编码方式的实现上<p>
+     * <ul>
+     *   <li>sds字符串而言 指向的是sds 而sds指针指向的又是sds的buf数组</li>
+     *   <li>其他编码方式 指向的就是数据结构实例 比如
+     *     <ul>
+     *       <li>quicklist</li>
+     *       <li>dict</li>
+     *       <li>ziplist</li>
+     *     </ul>
+     *   </li>
+     * </ul>
      */
     void *ptr;
 } robj;
@@ -1615,10 +1631,21 @@ struct redisServer {
     int list_max_ziplist_size;
     int list_compress_depth;
     /* time cache */
+	// 服务端的时间 秒 声明为原子类型的变量 即后续赋值操作为原子操作
     redisAtomic time_t unixtime; /* Unix time sampled every cron cycle. */
+	// 系统时间相对Greenwich相差了多少秒
     time_t timezone;            /* Cached timezone. As set by tzset(). */
+	/**
+	 * 描述了server实例中保存的时间的夏令时(DST)标志
+	 * <ul>
+	 *   <li>0 不是DST</li>
+	 *   <li>1 是DST</li>
+	 * </ul>
+	 */
     int daylight_active;        /* Currently in daylight saving time. */
+	// 服务端的时间 毫秒
     mstime_t mstime;            /* 'unixtime' in milliseconds. */
+	// 服务端的时间 微秒
     ustime_t ustime;            /* 'unixtime' in microseconds. */
     size_t blocking_op_nesting; /* Nesting level of blocking operation, used to reset blocked_last_cron. */
     long long blocked_last_cron; /* Indicate the mstime of the last time we did cron jobs from a blocking operation */

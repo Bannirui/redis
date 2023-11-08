@@ -2740,10 +2740,11 @@ void initServerConfig(void) {
                                       updated later after loading the config.
                                       This value may be used before the server
                                       is initialized. */
-    // 系统时间相对Greenwich相差了多少秒
+    // 系统时间相对Greenwich相差了多少秒(时区差异)
     server.timezone = getTimeZone(); /* Initialized by tzset(). */
     server.configfile = NULL;
     server.executable = NULL;
+	// 本机是32位还是64位
     server.arch_bits = (sizeof(long) == 8) ? 64 : 32;
     server.bindaddr_count = 0;
     server.unixsocketperm = CONFIG_DEFAULT_UNIX_SOCKET_PERM;
@@ -2755,7 +2756,9 @@ void initServerConfig(void) {
     server.saveparams = NULL;
     server.loading = 0;
     server.loading_rdb_used_mem = 0;
+	// 日志文件路径
     server.logfile = zstrdup(CONFIG_DEFAULT_LOGFILE);
+	// aof功能选项
     server.aof_state = AOF_OFF;
     server.aof_rewrite_base_size = 0;
     server.aof_rewrite_scheduled = 0;

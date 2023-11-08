@@ -65,7 +65,7 @@ INSTALL=install
 PKG_CONFIG?=pkg-config
 
 # Default allocator defaults to Jemalloc if it's not an ARM
-# 指定内存分配器
+# 指定内存分配器 linux操作系统上redis默认使用的是jemalloc适配器
 MALLOC=libc
 ifneq ($(uname_M),armv6l)
 ifneq ($(uname_M),armv7l)
@@ -240,6 +240,7 @@ ifeq ($(BUILD_WITH_SYSTEMD),yes)
 	FINAL_CFLAGS+= -DHAVE_LIBSYSTEMD
 endif
 
+# 将tcmalloc分配器编译到项目中
 ifeq ($(MALLOC),tcmalloc)
 	FINAL_CFLAGS+= -DUSE_TCMALLOC
 	FINAL_LIBS+= -ltcmalloc
@@ -250,6 +251,9 @@ ifeq ($(MALLOC),tcmalloc_minimal)
 	FINAL_LIBS+= -ltcmalloc_minimal
 endif
 
+# MALLOC变量默认是libc也就是说默认使用系统自带的内存分配实现
+# linux系统下会将MALLOC赋值为jemalloc 编译选项中通过宏定义USE_JEMALLOC标识使用了jemalloc内存分配器
+# 将jemalloc分配器编译到项目中
 ifeq ($(MALLOC),jemalloc)
 	DEPENDENCY_TARGETS+= jemalloc
 	FINAL_CFLAGS+= -DUSE_JEMALLOC -I../deps/jemalloc/include

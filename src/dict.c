@@ -105,10 +105,13 @@ static void _dictReset(dictht *ht)
 }
 
 /* Create a new hash table */
-// 创建空字典实例
-// 字典里面的hash表是空的
-// @param type 用来填充dict实例的type字段
-// @param privDataPtr 用来填充dict实例的privdata字段
+/**
+ * 创建空字典实例
+ * 字典里面的hash表是空的
+ * @param type 用来填充dict实例的type字段
+ * @param privDataPtr 用来填充dict实例的privdata字段
+ * @return
+ */
 dict *dictCreate(dictType *type,
         void *privDataPtr)
 {

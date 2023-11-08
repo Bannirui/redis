@@ -35,29 +35,92 @@
 #define __xstr(s) __str(s)
 #define __str(s) #s
 
+/**
+ * 使用哪个内存分配器是在编译的时候通过-D宏参数定义的
+ * <ul>
+ *   <li>-DUSE_TCMALLOC 使用tcmalloc分配器</li>
+ *   <li>-DUSE_JEMALLOC 使用jemalloc分配器</li>
+ *   <li>没有指定上述二者 就使用libc 即系统自带的默认分配器实现</li>
+ * </ul>
+ */
+/**
+ * 编译参数-DUSE_TCMALLOC指定了使用tcmalloc分配器
+ * 该分配器实现并不是每个版本都支持malloc_size
+ * <ul>
+ *   <li>版本<1.6 不支持malloc_size</li>
+ *   <li>版本>=1.6 支持malloc_size</li>
+ * </ul>
+ * 将tc_malloc_size(...)封装成zmalloc_size(...)
+ */
 #if defined(USE_TCMALLOC)
 #define ZMALLOC_LIB ("tcmalloc-" __xstr(TC_VERSION_MAJOR) "." __xstr(TC_VERSION_MINOR))
+/* tcmalloc头文件 */
 #include <google/tcmalloc.h>
 #if (TC_VERSION_MAJOR == 1 && TC_VERSION_MINOR >= 6) || (TC_VERSION_MAJOR > 1)
+/* tcmalloc版本>=1.6支持malloc_size 将其提供的tc_malloc_size(...)函数封装为统一的zmalloc_size(...) */
 #define HAVE_MALLOC_SIZE 1
+/* zmalloc_size(...)封装 */
 #define zmalloc_size(p) tc_malloc_size(p)
 #else
+/* tcmaloc版本<1.6不支持malloc_size */
 #error "Newer version of tcmalloc required"
 #endif
 
+/**
+ * 编译参数-DUSE_JEMALLOC指定了使用jemalloc分配器
+ * 该分配器实现并不是每个版本都支持malloc_size
+ * <ul>
+ *   <li>版本<2.1 不支持malloc_size</li>
+ *   <li>版本>=2.1 支持malloc_size</li>
+ * </ul>
+ * 将je_malloc_usable_size(...)封装成zmalloc_size(...)
+ */
 #elif defined(USE_JEMALLOC)
 #define ZMALLOC_LIB ("jemalloc-" __xstr(JEMALLOC_VERSION_MAJOR) "." __xstr(JEMALLOC_VERSION_MINOR) "." __xstr(JEMALLOC_VERSION_BUGFIX))
+/* jemalloc头文件 */
 #include <jemalloc/jemalloc.h>
 #if (JEMALLOC_VERSION_MAJOR == 2 && JEMALLOC_VERSION_MINOR >= 1) || (JEMALLOC_VERSION_MAJOR > 2)
+/* jemalloc版本>=2.1支持malloc_size 将其提供的je_malloc_size(...)函数封装为统一的zmalloc_size(...) */
 #define HAVE_MALLOC_SIZE 1
+/* zmalloc_size(...)封装 */
 #define zmalloc_size(p) je_malloc_usable_size(p)
 #else
+/* jemalloc版本<2.1不支持malloc_size */
 #error "Newer version of jemalloc required"
 #endif
 
+/**
+ * 没有通过编译参数指定具体的内存分配器
+ * 就用系统libc自带的默认实现
+ * 我常用的系统就macos和linux这两个 二者对c标准库的实现不同
+ * <ul>
+ *   <li>头文件
+ *     <ul>
+ *       <li>mac头文件为<malloc/malloc.h></li>
+ *       <li>linux头文件为<malloc.h></li>
+ *     </ul>
+ *   </li>
+ *   <li>malloc_size的支持
+ *     <ul>
+ *       <li>mac的库函数为malloc_size(...)</li>
+ *       <li>linux的库函数为malloc_usable_size(...)</li>
+ *     </ul>
+ *   </li>
+ * </ul>
+ */
 #elif defined(__APPLE__)
+/**
+ * mac平台
+ * <ul>
+ *   <li>malloc系列头文件为<malloc/malloc.h></li>
+ *   <li>有malloc_size支持</li>
+ *   <li>malloc_size实现为malloc_size(...)，将其封装为zmalloc_size(...)</li>
+ * </ul>
+ */
+ /* mac下libc头文件 */
 #include <malloc/malloc.h>
 #define HAVE_MALLOC_SIZE 1
+/* zmalloc_size(...)函数封装 */
 #define zmalloc_size(p) malloc_size(p)
 #endif
 
@@ -80,10 +143,20 @@
 #ifdef __FreeBSD__
 #include <malloc_np.h>
 #else
+/**
+ * linux平台的libc实现为glibc
+ * <ul>
+ *   <li>malloc系列头文件为<malloc.h></li>
+ *   <li>有malloc_size支持</li>
+ *   <li>malloc_size实现为malloc_usable_size(...)，将其封装为zmalloc_size(...)</li>
+ * </ul>
+ */
+/* linux下libc头文件 */
 #include <malloc.h>
 #endif
 
 #define HAVE_MALLOC_SIZE 1
+/* zmalloc_size(...)函数封装 */
 #define zmalloc_size(p) malloc_usable_size(p)
 
 #endif

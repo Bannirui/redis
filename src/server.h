@@ -1263,6 +1263,13 @@ struct redisServer {
     int activerehashing;        /* Incremental rehash in serverCron() */
     int active_defrag_running;  /* Active defragmentation running (holds current scan aggressiveness) */
     char *pidfile;              /* PID file path */
+	/**
+	 * 本机架构类型
+	 * <ul>
+	 *   <li>32位</li>
+	 *   <li>64位</li>
+	 * </ul>
+	 */
     int arch_bits;              /* 32 or 64 depending on sizeof(long) */
     // 记录serverCron定时任务执行了多少次
     int cronloops;              /* Number of times the cron function run */
@@ -1433,6 +1440,14 @@ struct redisServer {
     clientBufferLimitsConfig client_obuf_limits[CLIENT_TYPE_OBUF_COUNT];
     /* AOF persistence */
     int aof_enabled;                /* AOF configuration */
+	/**
+	 * aof功能选项
+	 * <ul>
+	 *   <li>0 AOF_OFF 关闭aof机制</li>
+	 *   <li>1 AOF_ON 开启aof机制</li>
+	 *   <li>2 AOF_WAIT_REWRITE</li>
+	 * </ul>
+	 */
     int aof_state;                  /* AOF_(ON|OFF|WAIT_REWRITE) */
     int aof_fsync;                  /* Kind of fsync() policy */
     // aof文件 字符串
@@ -1517,6 +1532,7 @@ struct redisServer {
     redisOpArray also_propagate;    /* Additional command to propagate. */
     int replication_allowed;        /* Are we allowed to replicate? */
     /* Logging */
+	// 日志文件路径
     char *logfile;                  /* Path of log file */
     int syslog_enabled;             /* Is syslog enabled? */
     char *syslog_ident;             /* Syslog ident */

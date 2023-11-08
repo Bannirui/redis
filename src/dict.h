@@ -85,12 +85,14 @@ typedef struct dictht {
     unsigned long used; // hash表节点的数量 有多少个键值对
 } dictht;
 
-// 字典
-// 字典是由两个hash表组成的 常用的hash表是ht[0] 当进行rehash时使用到ht[1]进行渐进式rehash
-// type和privdata为了实现多态
-// type保存了特定函数的指针
-// privdata携带了特定函数需要的一些可选参数
-// redis根据字典的用途 在type中设置不同的特定函数
+/**
+ * 字典
+ * 字典是由两个hash表组成的 常用的hash表是ht[0] 当进行rehash时使用到ht[1]进行渐进式rehash
+ * type和privdata为了实现多态
+ * type保存了特定函数的指针
+ * privdata携带了特定函数需要的一些可选参数
+ * redis根据字典的用途 在type中设置不同的特定函数
+ */
 typedef struct dict {
     dictType *type; // 字典的类型指针
     void *privdata; // 私有数据指针
@@ -98,10 +100,15 @@ typedef struct dict {
     dictht ht[2];
     // rehash下一个要迁移的桶索引 不进行rehash时为-1
     long rehashidx; /* rehashing not in progress if rehashidx == -1 */
-    // 暂停rehash 重入式的模式 在安全迭代器模式中要暂停rehash
-    // >0标识rehash是暂停的 安全的迭代需要rehash是暂停状态
-    // ==0初始状态
-    // <0标识rehash异常
+	/**
+	 * 暂停rehash
+	 * 重入式的模式 在安全迭代器模式中要暂停rehash
+	 * <ul>
+	 *   <li>>0 标识rehash是暂停的 安全的迭代需要rehash是暂停状态</li>
+	 *   <li>==0 初始状态</li>
+	 *   <li><0 标识rehash异常</li>
+	 * </ul>
+	 */
     int16_t pauserehash; /* If >0 rehashing is paused (<0 indicates coding error) */
 } dict;
 

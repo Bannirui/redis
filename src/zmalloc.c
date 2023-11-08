@@ -51,6 +51,7 @@ void zlibc_free(void *ptr) {
 #ifdef HAVE_MALLOC_SIZE
 #define PREFIX_SIZE (0)
 #define ASSERT_NO_SIZE_OVERFLOW(sz)
+
 #else
 #if defined(__sun) || defined(__sparc) || defined(__sparc__)
 #define PREFIX_SIZE (sizeof(long long))
@@ -58,6 +59,7 @@ void zlibc_free(void *ptr) {
 #define PREFIX_SIZE (sizeof(size_t))
 #endif
 #define ASSERT_NO_SIZE_OVERFLOW(sz) assert((sz) + PREFIX_SIZE > (sz))
+
 #endif
 
 /* When using the libc allocator, use a minimum allocation size to match the
@@ -66,12 +68,23 @@ void zlibc_free(void *ptr) {
 #define MALLOC_MIN_SIZE(x) ((x) > 0 ? (x) : sizeof(long))
 
 /* Explicitly override malloc/free etc when using tcmalloc. */
+/**
+ * malloc系列库函数的封装为zmalloc系列
+ * 无非就3种情况
+ * <ul>
+ *   <li>tcmalloc</li>
+ *   <li>jemalloc</li>
+ *   <li>libc</li>
+ * </ul>
+ */
+ /* tcmalloc分配器的函数封装 */
 #if defined(USE_TCMALLOC)
 #define malloc(size) tc_malloc(size)
 #define calloc(count,size) tc_calloc(count,size)
 #define realloc(ptr,size) tc_realloc(ptr,size)
 #define free(ptr) tc_free(ptr)
 #elif defined(USE_JEMALLOC)
+ /* jemalloc分配器的函数封装 */
 #define malloc(size) je_malloc(size)
 #define calloc(count,size) je_calloc(count,size)
 #define realloc(ptr,size) je_realloc(ptr,size)
@@ -99,6 +112,13 @@ static void (*zmalloc_oom_handler)(size_t) = zmalloc_default_oom;
 
 /* Try allocating memory, and return NULL if failed.
  * '*usable' is set to the usable size if non NULL. */
+/**
+ * 尝试动态内存分配
+ * 分配失败就返回NULL
+ * @param size 期待申请的内存大小
+ * @param usable 在内容申请成功的前提下 表示成功申请下来的内存中可用内存大小
+ * @return
+ */
 void *ztrymalloc_usable(size_t size, size_t *usable) {
     ASSERT_NO_SIZE_OVERFLOW(size);
     void *ptr = malloc(MALLOC_MIN_SIZE(size)+PREFIX_SIZE);
@@ -327,6 +347,7 @@ void zfree_usable(void *ptr, size_t *usable) {
 #endif
 }
 
+// 复制字符串
 char *zstrdup(const char *s) {
     size_t l = strlen(s)+1;
     char *p = zmalloc(l);

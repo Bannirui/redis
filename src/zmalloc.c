@@ -48,8 +48,20 @@ void zlibc_free(void *ptr) {
 #include "zmalloc.h"
 #include "atomicvar.h"
 
+/**
+ * PREFIX_SIZE是内存前缀 这个内存前缀是redis级别的 目的是为了知道redis从OS系统真实获得(或者近似真实获得)了多少内存
+ * 本质就是redis通过PREFIX_SIZE模拟OS实现对内存块大小的记录 只不过受限于系统层面的级别无法准确而已 但是也够用了
+ *   <li>对于已经有malloc_size支持的内存分配器 有直接库函数知道redis从OS获取到的真实内存大小 所以不需要redis额外负担记录的职责<li>
+ *   <li>对于没有malloc_size redis只能自己负担这个记录工作 但是因为没有OS帮助 是不知道OS分配的真实内存大小 只能靠redis记下自己主动申请了多少空间</li>
+ * 因此在第二种情况下 redis就要评估到底需要多大的额外空间来记录内存大小 这个值大小肯定依赖malloc接受的入参 又跟机器的字宽有直接关系
+ * 但是不论怎样 肯定是一个unsigned的整数 并且PREFIX_SIZE肯定得>0
+ * 此时redis期待向OS申请的内存大小就是sz+PREFIX_SIZE 两个unsigned整数相加就可能存在整数溢出的情况 如果溢出了那么两数求和就是负数
+ *
+ * 因此ASSERT_NO_SIZE_OVERFLOW断言的就是判断要向malloc申请的内存大小没有超过malloc能够分配的上限 即没有溢出
+ */
 #ifdef HAVE_MALLOC_SIZE
 #define PREFIX_SIZE (0)
+/* 内存分配器支持malloc_size 不需要redis自己负担前缀内存来记录大小 因此也size_t类型本身就是malloc函数接受的类型 直接传给malloc即可 即不需要对参数判断 因此断言函数是空的 */
 #define ASSERT_NO_SIZE_OVERFLOW(sz)
 
 #else
@@ -58,6 +70,7 @@ void zlibc_free(void *ptr) {
 #else
 #define PREFIX_SIZE (sizeof(size_t))
 #endif
+/* 内存分配器不支持malloc_size 需要redis自己负担前缀内存来记录大小 因此总共期待申请的内存大小是sz+PREFIX_SIZE 此时就要判断这个和是否溢出了size_t类型的整数大小 */
 #define ASSERT_NO_SIZE_OVERFLOW(sz) assert((sz) + PREFIX_SIZE > (sz))
 
 #endif
@@ -93,12 +106,34 @@ void zlibc_free(void *ptr) {
 #define dallocx(ptr,flags) je_dallocx(ptr,flags)
 #endif
 
+ /* 原子更新使用内存 malloc申请完之后 加上新分配的空间大小 */
 #define update_zmalloc_stat_alloc(__n) atomicIncr(used_memory,(__n))
+/* 原子更新使用内存 free释放完之后 减去释放的空间大小 */
 #define update_zmalloc_stat_free(__n) atomicDecr(used_memory,(__n))
 
+ /**
+  * redis侧记录使用的内存大小
+  * <ul>
+  *   <li>编译环境有malloc_size支持的情况下 记录的就是OS实实在在分配给redis的内存大小 也就是redis真实用了多少空间</li>
+  *   <li>编译环境没有malloc_size支持的情况下 记录的就是redis实际向OS申请的内存大小 OS实际分配给redis的空间>=这个值 因此这种情况下记录的`使用空间`就是实际被分配的约数</li>
+  * </ul>
+  * 为什么要定义成原子变量
+  * 我现在的认知是虽然redis的IO操作(即面向用户的存取操作)是单线程
+  * 但是redis还会开启新线程处理后台任务或者非用户层的存取任务
+  * 那么就可能面临并发更新这个内存值的情况
+  */
 static redisAtomic size_t used_memory = 0;
 
-// 内存OOM处理器-默认处理器
+/**
+ * 内存OOM处理器-默认处理器
+ * 这个处理器实现相对简单
+ * <ul>
+ *   <li>打印报错信息</li>
+ *   <li>终止当前进程</li>
+ * </ul>
+ * fflush(...)函数是个同步函数
+ * 在终止进程之前fflush(...)函数的原因应该是保证在进程停止之前输出标准错误信息 防止数据呆在缓冲区没输出 然后进程结束了
+ */
 static void zmalloc_default_oom(size_t size) {
     fprintf(stderr, "zmalloc: Out of memory trying to allocate %zu bytes\n",
         size);
@@ -115,36 +150,71 @@ static void (*zmalloc_oom_handler)(size_t) = zmalloc_default_oom;
 /**
  * 尝试动态内存分配
  * 分配失败就返回NULL
+ *
+ * 不处理OOM 关注内存块大小
  * @param size 期待申请的内存大小
- * @param usable 在内容申请成功的前提下 表示成功申请下来的内存中可用内存大小
- * @return
+ * @param usable 在内容申请成功的前提下 表示成功申请下来的内存块大小(设为n) 可能存在两种情况
+ *        <ul>
+ *          <li>n>=申请的大小</li>
+ *          <li>n==申请的大小</li>
+ *        </ul>
+ * @return 可以使用的起始地址 用来存取用户数据
  */
 void *ztrymalloc_usable(size_t size, size_t *usable) {
+  /**
+   * 这个断言函数我觉得真实精妙
+   * 判定一个类型的数数否溢出的思路
+   */
     ASSERT_NO_SIZE_OVERFLOW(size);
+	/**
+	 * 调用malloc通过内存分配器向OS申请内存
+	 */
     void *ptr = malloc(MALLOC_MIN_SIZE(size)+PREFIX_SIZE);
 
     if (!ptr) return NULL;
 #ifdef HAVE_MALLOC_SIZE
+	// 有malloc_size库函数支持 直接获取申请到的内存块的实际大小 更新使用内存 加上新分配的大小
     size = zmalloc_size(ptr);
     update_zmalloc_stat_alloc(size);
+	// 内存块实际大小(该值>=申请的大小)
     if (usable) *usable = size;
+	// malloc给的指针已经指向了给用户使用的起始地址
     return ptr;
 #else
+  // 没有有malloc_size库函数支持 更新使用内存 加上新申请的大小
+  // 使用内存块的前缀空间记录这个内存块的大小(理论上应该记录实际大小 但是无从获取 因此只能记录期待申请的大小)
     *((size_t*)ptr) = size;
     update_zmalloc_stat_alloc(size+PREFIX_SIZE);
+	// 内存块的近似大小(该值==申请的大小)
     if (usable) *usable = size;
+	// 自己空出前缀空间 模拟malloc的实现 将指针指向给用户使用的起始地址
     return (char*)ptr+PREFIX_SIZE;
 #endif
 }
 
 /* Allocate memory or panic */
+/**
+ * 对malloc的封装
+ * 如果OOM要对OOM进行处理
+ *
+ * 处理OOM 关注内存块大小
+ */
 void *zmalloc(size_t size) {
+    // 尝试申请内存 并不关注获得的内存块大小
     void *ptr = ztrymalloc_usable(size, NULL);
+	// 内存分配失败 回调处理器处理OOM
     if (!ptr) zmalloc_oom_handler(size);
     return ptr;
 }
 
 /* Try allocating memory, and return NULL if failed. */
+/**
+ * 对malloc的封装
+ * 尝试动态分配内存
+ * 如果OOM了也直接交给上层关注
+ *
+ * 不处理OOM 不关注内存块大小
+ */
 void *ztrymalloc(size_t size) {
     void *ptr = ztrymalloc_usable(size, NULL);
     return ptr;
@@ -152,6 +222,13 @@ void *ztrymalloc(size_t size) {
 
 /* Allocate memory or panic.
  * '*usable' is set to the usable size if non NULL. */
+/**
+ * 对malloc的封装
+ * 尝试动态分配内存 并获取到内存块大小
+ * 如果OOM了也要进行处理
+ *
+ * 处理OOM 关注内存块大小
+ */
 void *zmalloc_usable(size_t size, size_t *usable) {
     void *ptr = ztrymalloc_usable(size, usable);
     if (!ptr) zmalloc_oom_handler(size);
@@ -229,16 +306,27 @@ void *ztryrealloc_usable(void *ptr, size_t size, size_t *usable) {
     void *newptr;
 
     /* not allocating anything, just redirect to free. */
+	/**
+	 * 边界处理
+	 * 当前有可用内存 给定的要新申请的大小为0
+	 * 这样的语义是释放已有的内存
+	 */
     if (size == 0 && ptr != NULL) {
         zfree(ptr);
         if (usable) *usable = 0;
         return NULL;
     }
     /* Not freeing anything, just redirect to malloc. */
+	/**
+	 * 边界处理
+	 * 当前持有的内存为空
+	 * 这样的语义是新申请一片内存 不做初始化
+	 */
     if (ptr == NULL)
         return ztrymalloc_usable(size, usable);
 
 #ifdef HAVE_MALLOC_SIZE
+	// 已经持有的内存块大小
     oldsize = zmalloc_size(ptr);
     newptr = realloc(ptr,size);
     if (newptr == NULL) {
@@ -246,6 +334,7 @@ void *ztryrealloc_usable(void *ptr, size_t size, size_t *usable) {
         return NULL;
     }
 
+	// 更新使用内存量
     update_zmalloc_stat_free(oldsize);
     size = zmalloc_size(newptr);
     update_zmalloc_stat_alloc(size);
@@ -310,6 +399,15 @@ size_t zmalloc_usable_size(void *ptr) {
 }
 #endif
 
+/**
+ * 对free(...)函数的封装
+ * <ul>
+ *   <li>更新内存使用量 要释放的内存块对应的内存块大小要扣减掉</li>
+ *   <li>向OS申请释放内存</li>
+ * </ul>
+ *
+ * 要更新内存使用量 就要知道内存块大小 此时也更加印证了PREFIX_SIZE的重要性 正式因为PREFIX_SIZE统一了跟OS系统一样的内存块大小机制 大大简化了整个的内存使用量统计操作
+ */
 void zfree(void *ptr) {
 #ifndef HAVE_MALLOC_SIZE
     void *realptr;
@@ -318,17 +416,24 @@ void zfree(void *ptr) {
 
     if (ptr == NULL) return;
 #ifdef HAVE_MALLOC_SIZE
+	// 更新内存使用量 释放掉的内存量
     update_zmalloc_stat_free(zmalloc_size(ptr));
+	// 释放
     free(ptr);
 #else
+	// 前移前缀空间 这个地方才是OS视角的use_ptr
     realptr = (char*)ptr-PREFIX_SIZE;
+	// 前缀空间上存储的内存大小
     oldsize = *((size_t*)realptr);
+	// 更新内存使用量 释放掉的内存量
     update_zmalloc_stat_free(oldsize+PREFIX_SIZE);
+	// 释放
     free(realptr);
 #endif
 }
 
 /* Similar to zfree, '*usable' is set to the usable size being freed. */
+// 同zfree 只是将待释放的内存块大小返回出来
 void zfree_usable(void *ptr, size_t *usable) {
 #ifndef HAVE_MALLOC_SIZE
     void *realptr;
@@ -347,8 +452,12 @@ void zfree_usable(void *ptr, size_t *usable) {
 #endif
 }
 
-// 复制字符串
+/**
+ * 复制字符串
+ * 实现很简单 但是我不太理解为啥把这个函数放在zmalloc
+ */
 char *zstrdup(const char *s) {
+    // 字符串长度 多一个byte放\0结束符
     size_t l = strlen(s)+1;
     char *p = zmalloc(l);
 
@@ -356,8 +465,10 @@ char *zstrdup(const char *s) {
     return p;
 }
 
+// 内存使用量
 size_t zmalloc_used_memory(void) {
     size_t um;
+	// 读取used_memory变量的值
     atomicGet(used_memory,um);
     return um;
 }
@@ -380,21 +491,31 @@ void zmalloc_set_oom_handler(void (*oom_handler)(size_t)) {
  * function RedisEstimateRSS() that is a much faster (and less precise)
  * version of the function. */
 
+/**
+ * linux系统的/proc虚拟文件系统
+ * 在linux上想要知道某个进程的实际内存占用很简单 使用top命令即可 其中RES就是内存驻留(不包含swap交换内存) 单位是kb
+ * 具体到某个进程的运行时信息存储在文件/proc/{pid}/stat上 这个文件内容每个指标项通过空格作为分割符 第24个就是RSS指标 单位是页
+ * 因此linux系统某个进程的RSS就是直接读这个文件即可
+ */
 #if defined(HAVE_PROC_STAT)
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
 size_t zmalloc_get_rss(void) {
+    // 页大小(单位是bytes) 下面要去读/proc/{pid}/stat获取RSS大小 得到的是页数
+	// 结果是4096 byte
     int page = sysconf(_SC_PAGESIZE);
     size_t rss;
     char buf[4096];
     char filename[256];
     int fd, count;
     char *p, *x;
-
+	// 虚拟文件系统的文件路径/proc/{pid}/stat
     snprintf(filename,256,"/proc/%ld/stat",(long) getpid());
+	// 文件不存在
     if ((fd = open(filename,O_RDONLY)) == -1) return 0;
+	// 文件内容读到buf数组中 读完关闭文件
     if (read(fd,buf,4096) <= 0) {
         close(fd);
         return 0;
@@ -402,20 +523,24 @@ size_t zmalloc_get_rss(void) {
     close(fd);
 
     p = buf;
+	// 各个指标用空格作为分割符 第24个就是RSS指标
     count = 23; /* RSS is the 24th field in /proc/<pid>/stat */
     while(p && count--) {
         p = strchr(p,' ');
         if (p) p++;
     }
     if (!p) return 0;
+	// 找到第24项和25项之间的空格 人为将其改成\0结束符 目的是让函数strtoll(...)将第24项字符串形式转成整数形式
     x = strchr(p,' ');
     if (!x) return 0;
     *x = '\0';
-
+	// 将第24项的RSS字符串形式转换成10进制整数形式(long long类型)
     rss = strtoll(p,NULL,10);
+	// rss页*每页page个byte
     rss *= page;
     return rss;
 }
+
 #elif defined(HAVE_TASKINFO)
 #include <sys/types.h>
 #include <sys/sysctl.h>
@@ -433,6 +558,7 @@ size_t zmalloc_get_rss(void) {
 
     return t_info.resident_size;
 }
+
 #elif defined(__FreeBSD__) || defined(__DragonFly__)
 #include <sys/types.h>
 #include <sys/sysctl.h>
@@ -456,6 +582,7 @@ size_t zmalloc_get_rss(void) {
 
     return 0L;
 }
+
 #elif defined(__NetBSD__)
 #include <sys/types.h>
 #include <sys/sysctl.h>
@@ -475,6 +602,7 @@ size_t zmalloc_get_rss(void) {
 
     return 0L;
 }
+
 #elif defined(HAVE_PSINFO)
 #include <unistd.h>
 #include <sys/procfs.h>
@@ -496,6 +624,7 @@ size_t zmalloc_get_rss(void) {
     close(fd);
     return info.pr_rssize;
 }
+
 #else
 size_t zmalloc_get_rss(void) {
     /* If we can't get the RSS in an OS-specific way for this system just

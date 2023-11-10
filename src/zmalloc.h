@@ -169,23 +169,49 @@
 #define HAVE_DEFRAG
 #endif
 
+// 处理OOM 不关注内存块大小
 void *zmalloc(size_t size);
+// 处理OOM 不关注内存块大小
 void *zcalloc(size_t size);
+// 处理OOM 不关注内存块大小
 void *zrealloc(void *ptr, size_t size);
+
+// 不处理OOM 不关注内存块大小
 void *ztrymalloc(size_t size);
+// 不处理OOM 不关注内存块大小
 void *ztrycalloc(size_t size);
+// 不处理OOM 不关注内存块大小
 void *ztryrealloc(void *ptr, size_t size);
+
 void zfree(void *ptr);
+
+// 处理OOM 关注内存块大小
 void *zmalloc_usable(size_t size, size_t *usable);
+// 处理OOM 关注内存块大小
 void *zcalloc_usable(size_t size, size_t *usable);
+// 处理OOM 关注内存块大小
 void *zrealloc_usable(void *ptr, size_t size, size_t *usable);
+
+// 不处理OOM 关注内存块大小
 void *ztrymalloc_usable(size_t size, size_t *usable);
+// 不处理OOM 关注内存块大小
 void *ztrycalloc_usable(size_t size, size_t *usable);
+// 不处理OOM 关注内存块大小
 void *ztryrealloc_usable(void *ptr, size_t size, size_t *usable);
+
 void zfree_usable(void *ptr, size_t *usable);
 char *zstrdup(const char *s);
 size_t zmalloc_used_memory(void);
 void zmalloc_set_oom_handler(void (*oom_handler)(size_t));
+
+/**
+ * RSS=Resident Set Size 当前进程驻留在内存中的空间大小 不包括被swap出去的空间
+ * 申请的内存空间不会常驻内存 系统会将暂时不用的空间从内存中置换到swap区
+ * 即这个函数返回的是进程实际消耗的物理内存空间
+ * 返回值的单位是byte
+ *
+ * 每个平台实现又不一样 因此要根据不同的平台进行不同的实现
+ */
 size_t zmalloc_get_rss(void);
 int zmalloc_get_allocator_info(size_t *allocated, size_t *active, size_t *resident);
 void set_jemalloc_bg_thread(int enable);

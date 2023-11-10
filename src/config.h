@@ -49,7 +49,9 @@
 #endif
 
 /* Test for proc filesystem */
+// linux系统上运行时的指标都从/proc虚拟文件系统上拿
 #ifdef __linux__
+/* linux系统从/proc虚拟文件系统获取RSS /proc/{pid}/stat 的第24项就是RSS(驻留物理内存多少个page) */
 #define HAVE_PROC_STAT 1
 #define HAVE_PROC_MAPS 1
 #define HAVE_PROC_SMAPS 1

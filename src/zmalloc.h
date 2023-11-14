@@ -213,6 +213,23 @@ void zmalloc_set_oom_handler(void (*oom_handler)(size_t));
  * 每个平台实现又不一样 因此要根据不同的平台进行不同的实现
  */
 size_t zmalloc_get_rss(void);
+
+/**
+ * 这个函数的实现以是否使用jemalloc作为了分支判断
+ * <ul>用来获取内存分配器记录的内存相关的指标信息
+ *   <li>stats.resident</li>
+ *   <li>stats.active</li>
+ *   <li>stats.allocated</li>
+ * </ul>
+ * 为什么用是否使用jemalloc分配器作为判断分支呢
+ * 说明这些信息只能从jemalloc分配器获取
+ * 其他分配器 包括tcmalloc和libc都没有提供相关接口
+ * 内存相关的数据指标获取一定是计算场景需要 那么不是jemalloc分配器又该怎么处理呢 所以到时候肯定会判断
+ * <li>resident</li>
+ * <li>active</li>
+ * <li>allocated</li>
+ * 这些值是否等于0 不等于0的走一个逻辑 等于0的走另一个兜底逻辑
+ */
 int zmalloc_get_allocator_info(size_t *allocated, size_t *active, size_t *resident);
 void set_jemalloc_bg_thread(int enable);
 int jemalloc_purge();

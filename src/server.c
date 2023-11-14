@@ -6495,12 +6495,37 @@ int main(int argc, char **argv) {
 #ifdef INIT_SETPROCTITLE_REPLACEMENT
     spt_init(argc, argv);
 #endif
-    // 设置时区
+	/**
+	 * 地域设置
+	 * <ul>能够设置的选项有
+	 *   <li>LC_ALL 以下所有项都将收到影响</li>
+	 *   <li>LC_COLLATE 字符排序 默认是ASCII字典序</li>
+	 *   <li>LC_CTYPE 影响字符分类</li>
+	 *   <li>LC_MESSAGES 系统响应</li>
+	 *   <li>LC_MONETARY 货币信息(比如货币符号 国际货币代码)</li>
+	 *   <li>LC_NUMERIC 数字格式(比如小数点形式是.还是,)</li>
+	 *   <li>LC_TIME 日期时间格式</li>
+	 * </ul>
+	 * <ul>能够设置的值
+	 *   <li>"" 使用当前操作系统的地域设置</li>
+	 *   <li>C 默认的地域设置</li>
+	 *   <li>NULL 标识函数返回当前的地域设置</li>
+	 * </ul>
+	 */
     setlocale(LC_COLLATE,"");
+	// 根据环境变量TZ设置时区
     tzset(); /* Populates 'timezone' global. */
-    // 内存oom的处理器 注册了一个回调函数
+    /**
+     * redis基于jemalloc、tcmalloc、libc封装了zmalloc
+     * 后续的内存申请都将使用zmalloc 为其设置OOM处理器
+     */
     zmalloc_set_oom_handler(redisOutOfMemoryHandler);
-    // 设置随机数种子
+	// TODO: 2023/11/13
+	/**
+	 * <li>首先为啥同时使用srand和srandom库函数 而不是直接统一使用srandom函数</li>
+	 * <li>在随机数播种时候使用了比较经典的方式 恰好下面一行代码就要获取当前系统时间 是否可以将下面一行代码前置 然后播种使用这个值 减少一次系统调用的开销</li>
+	 */
+    // 随机数播种
     srand(time(NULL)^getpid());
     srandom(time(NULL)^getpid());
     // 系统时间

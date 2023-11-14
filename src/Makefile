@@ -24,6 +24,7 @@ uname_M := $(shell sh -c 'uname -m 2>/dev/null || echo not')
 # ?=条件赋值 如果变量已经赋值 就不要重新赋值了
 OPTIMIZATION?=-O2
 # 依赖目标
+# 在linux环境下还会添加jemalloc
 DEPENDENCY_TARGETS=hiredis linenoise lua hdr_histogram
 NODEPS:=clean distclean
 
@@ -102,6 +103,9 @@ ifeq ($(USE_JEMALLOC),no)
 endif
 
 # Override default settings if possible
+# include后面的依赖优先级最高 先于all之前执行
+# - 标识即时报错也继续执行
+# 这个地方的报错无非就是需要的.make-settings文件不存在 因为这个文件是make写入的 当第一次执行make的时候肯定更没有这个文件
 -include .make-settings
 
 FINAL_CFLAGS=$(STD) $(WARN) $(OPT) $(DEBUG) $(CFLAGS) $(REDIS_CFLAGS)
@@ -318,6 +322,12 @@ REDIS_CHECK_AOF_NAME=redis-check-aof$(PROG_SUFFIX)
 
 # redis源码根目录下makefile中的cd src && make all
 # MakeFile真正工作的地方
+# redis-server
+# redis-sentinel
+# redis-cli
+# redis-benchmark
+# redis-check-rdb
+# redis-check-aof
 all: $(REDIS_SERVER_NAME) $(REDIS_SENTINEL_NAME) $(REDIS_CLI_NAME) $(REDIS_BENCHMARK_NAME) $(REDIS_CHECK_RDB_NAME) $(REDIS_CHECK_AOF_NAME)
 	@echo ""
 	@echo "Hint: It's a good idea to run 'make test' ;)"
@@ -326,6 +336,10 @@ all: $(REDIS_SERVER_NAME) $(REDIS_SENTINEL_NAME) $(REDIS_CLI_NAME) $(REDIS_BENCH
 Makefile.dep:
 	-$(REDIS_CC) -MM *.c > Makefile.dep 2> /dev/null || true
 
+# 在NODEPS中查找MAKECMDGOALS 统计查找到的单词数量 结果是0
+# 因此执行if分支内的语句
+# 但是这个if相当于嵌套在Makefile.dep
+# 所以这个地方没看懂 想要执行include指令就要先执行Makefile.dep 而include指令又会触发Makefile.dep执行
 ifeq (0, $(words $(findstring $(MAKECMDGOALS), $(NODEPS))))
 -include Makefile.dep
 endif
@@ -345,24 +359,36 @@ persist-settings: distclean
 	echo REDIS_LDFLAGS=$(REDIS_LDFLAGS) >> .make-settings
 	echo PREV_FINAL_CFLAGS=$(FINAL_CFLAGS) >> .make-settings
 	echo PREV_FINAL_LDFLAGS=$(FINAL_LDFLAGS) >> .make-settings
+	# cd ../deps && make hiredis
+	# cd ../deps && make linenoise
+	# cd ../deps && make lua
+	# cd ../deps && make jdr_histogram
+	# cd ../deps && make jemalloc 编译jemalloc项目
 	-(cd ../deps && $(MAKE) $(DEPENDENCY_TARGETS))
 
 .PHONY: persist-settings
 
 # Prerequisites target
 .make-prerequisites:
-	@touch $@
+	# 创建.make-prerequisites文件
+	touch $@
 
 # Clean everything, persist settings and build dependencies if anything changed
+# strip函数将字符串中空格去掉
+# 这个if相当于嵌套在.make-prerequisites中
+# 首次编译肯定会触发persist-settings执行
 ifneq ($(strip $(PREV_FINAL_CFLAGS)), $(strip $(FINAL_CFLAGS)))
 .make-prerequisites: persist-settings
 endif
 
+# 这个if相当于嵌套在.make-prerequisites中
+# 首次编译肯定会触发persist-settings执行
 ifneq ($(strip $(PREV_FINAL_LDFLAGS)), $(strip $(FINAL_LDFLAGS)))
 .make-prerequisites: persist-settings
 endif
 
 # redis-server
+# 依赖.o文件
 $(REDIS_SERVER_NAME): $(REDIS_SERVER_OBJ)
 	$(REDIS_LD) -o $@ $^ ../deps/hiredis/libhiredis.a ../deps/lua/src/liblua.a $(FINAL_LIBS)
 
@@ -386,13 +412,21 @@ $(REDIS_CLI_NAME): $(REDIS_CLI_OBJ)
 $(REDIS_BENCHMARK_NAME): $(REDIS_BENCHMARK_OBJ)
 	$(REDIS_LD) -o $@ $^ ../deps/hiredis/libhiredis.a ../deps/hdr_histogram/hdr_histogram.o $(FINAL_LIBS)
 
+# 变量替换
+# 使用匹配符%匹配变量 使用%保留变量值中的指定字符串 然后其他部分使用指定字符串代替
+# .d文件
+# 这个include指令会在all这个target执行前先执行
+# 首次编译的时候.d文件是找不到的 所以用-忽略异常让make继续执行下去
 DEP = $(REDIS_SERVER_OBJ:%.o=%.d) $(REDIS_CLI_OBJ:%.o=%.d) $(REDIS_BENCHMARK_OBJ:%.o=%.d)
 -include $(DEP)
 
 # Because the jemalloc.h header is generated as a part of the jemalloc build,
 # building it should complete before building any other object. Instead of
 # depending on a single artifact, build all dependencies first.
+# 依赖.make-prerequisites 对依赖的库进行处理 包括jemalloc
 %.o: %.c .make-prerequisites
+	# .c文件编译成.o文件
+	# gcc -MMD -o x.o -c x.c
 	$(REDIS_CC) -MMD -o $@ -c $<
 
 clean:

@@ -541,6 +541,7 @@ size_t zmalloc_get_rss(void) {
     return rss;
 }
 
+/* 苹果系统依赖的是微内核mach的实现 但是我没有找到对应的手册说明 也就无从谈起解读 只能说如果可以学习redis 如果有一天自己要在mac上获取进程的RSS信息 可以用它的方式 */
 #elif defined(HAVE_TASKINFO)
 #include <sys/types.h>
 #include <sys/sysctl.h>
@@ -636,8 +637,26 @@ size_t zmalloc_get_rss(void) {
 }
 #endif
 
+/**
+ * 从内存分配器端获取内存相关的指标
+ * <li>resident</li>
+ * <li>active</li>
+ * <li>allocated</li>
+ * 使用了jemalloc分配器的可以直接从jemalloc提供的接口获取
+ * 其他的分配器实现没有这个功能
+ */
+
+/* 使用了jemalloc分配器 从接口获取数据 */
 #if defined(USE_JEMALLOC)
 
+/**
+ * 通过Makefile的跟踪和https://github.com/jemalloc/jemalloc/blob/dev/INSTALL.md
+ * 知道的是jemalloc提供的系列函数都指定了je_作为前缀
+ * 那么反推这里的je_mallctl就是mallctl的实现
+ * 所以只要搞明白mallctl的作用即可
+ * mallctl(name, oldp, oldlenp, newp, newlen)
+ * 即mallctl会将要查询的name的结果放到oldp指针变量
+ */
 int zmalloc_get_allocator_info(size_t *allocated,
                                size_t *active,
                                size_t *resident) {
@@ -680,6 +699,13 @@ int jemalloc_purge() {
     return -1;
 }
 
+/**
+ * 内存分配器不是jemalloc 没有查询接口支持
+ * <li>allocated</li>
+ * <li>active</li>
+ * <li>resident</li>
+ * 这3个值给定0 在使用的时候以0为判定分支
+ */
 #else
 
 int zmalloc_get_allocator_info(size_t *allocated,

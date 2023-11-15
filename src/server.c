@@ -6537,6 +6537,12 @@ int main(int argc, char **argv) {
      * to reset it and restore it back. We do this early to avoid a potential
      * race condition with threads that could be creating files or directories.
      */
+	/**
+	 * 入参0777是8进制
+	 * 这个地方这样调用两次的原因在于利用了这个函数特性 既不改变新建文件的权限 又能记下默认的umask值
+	 * umask函数入参是要移除的权限 出参设置新值之前的旧值
+	 * 因此先调用一次函数取出来umask值 再把umask值设置回去 两次调用并没有改变umask值
+	 */
     umask(server.umask = umask(0777));
 
     // 根据本地时间生成随机数种子

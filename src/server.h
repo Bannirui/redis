@@ -1247,6 +1247,7 @@ struct redisServer {
     int config_hz;              /* Configured HZ value. May be different than
                                    the actual 'hz' field value if dynamic-hz
                                    is enabled. */
+	// 系统默认的umask值 用于文件权限计算
     mode_t umask;               /* The umask value of the process on startup */
     // serverCron这个周期性定时任务1s被执行多少次 默认值是10 也就是说定时任务期待每隔100ms被执行一次
     int hz;                     /* serverCron() calls frequency in hertz */

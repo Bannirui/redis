@@ -647,6 +647,7 @@ size_t zmalloc_get_rss(void) {
  */
 
 /* 使用了jemalloc分配器 从接口获取数据 */
+/* 下面系列功能都是通过jemalloc的mallctl函数实现的 */
 #if defined(USE_JEMALLOC)
 
 /**
@@ -691,6 +692,7 @@ int jemalloc_purge() {
     char tmp[32];
     unsigned narenas = 0;
     size_t sz = sizeof(unsigned);
+	// mallctl
     if (!je_mallctl("arenas.narenas", &narenas, &sz, NULL, 0)) {
         sprintf(tmp, "arena.%d.purge", narenas);
         if (!je_mallctl(tmp, NULL, 0, NULL, 0))
@@ -715,10 +717,12 @@ int zmalloc_get_allocator_info(size_t *allocated,
     return 1;
 }
 
+// 没有使用jemalloc 函数相当于空实现
 void set_jemalloc_bg_thread(int enable) {
     ((void)(enable));
 }
 
+// 没有使用jemalloc 函数相当于空实现
 int jemalloc_purge() {
     return 0;
 }
@@ -743,13 +747,29 @@ int jemalloc_purge() {
  *
  * Example: zmalloc_get_smap_bytes_by_field("Rss:",-1);
  */
+/*
+ * linux系统通过proc虚拟文件系统获取smaps
+ */
 #if defined(HAVE_PROC_SMAPS)
+/**
+ *
+ * @param field 字符串 要查询的指标项
+ * 	            <ul>
+ * 	              <li>Private_Dirty:</li>
+ * 	              <li>Rss:</li>
+ * 	              <li>AnonHugePages:</li>
+ * 	            </ul>
+ * @param pid 进程(线程)
+ * @return 空间大小(byte)
+ */
 size_t zmalloc_get_smap_bytes_by_field(char *field, long pid) {
+    // 缓存文件中每一行的读取信息
     char line[1024];
     size_t bytes = 0;
     int flen = strlen(field);
     FILE *fp;
 
+	// /proc/{pid}/smaps文件
     if (pid == -1) {
         fp = fopen("/proc/self/smaps","r");
     } else {
@@ -757,13 +777,29 @@ size_t zmalloc_get_smap_bytes_by_field(char *field, long pid) {
         snprintf(filename,sizeof(filename),"/proc/%ld/smaps",pid);
         fp = fopen(filename,"r");
     }
-
+	// 文件打开失败
     if (!fp) return 0;
+	// 逐行读取文件 截取文件中要找的几行如下
+	// Private_Dirty:         0 kB
+	// Rss:                  16 kB
+	// AnonHugePages:         0 kB
     while(fgets(line,sizeof(line),fp) != NULL) {
+	    /**
+	     * 指标项有3中可能性
+	     * <ul>
+	     *   <li>Private_Dirty:</li>
+	     *   <li>Rss:</li>
+	     *   <li>AnonHugePages:</li>
+	     * </ul>
+	     */
         if (strncmp(line,field,flen) == 0) {
+		    // 找到了对应要找的指标那一行 找到kb的k所在位置 人为改成字符串结束符
+			// 然后将计量单位前面的数字从字符串转整型
+			// 截取的范围是冒号(:)之后到k(kb的k)之前这一段包含空格和数字的内容
             char *p = strchr(line,'k');
             if (p) {
                 *p = '\0';
+				// 多少个byte
                 bytes += strtol(line+flen,NULL,10) * 1024;
             }
         }
@@ -779,13 +815,28 @@ size_t zmalloc_get_smap_bytes_by_field(char *field, long pid) {
  * Note that AnonHugePages is a no-op as THP feature
  * is not supported in this platform
  */
+/**
+ *
+ * @param field 字符串 要查询的指标项
+ * 	            <ul>
+ * 	              <li>Private_Dirty:</li>
+ * 	              <li>Rss:</li>
+ * 	              <li>AnonHugePages:</li>
+ * 	            </ul>
+ * @param pid
+ * @return 空间大小(byte)
+ */
 size_t zmalloc_get_smap_bytes_by_field(char *field, long pid) {
+    // mac系统
 #if defined(__APPLE__)
     struct proc_regioninfo pri;
     if (pid == -1) pid = getpid();
+	// 跟RSS一样 mac的指标获取依赖的是mach微内核的系统调用
+	// proc_pidinfo函数结果pri中的空间大小计量单位 跟linux系统的proc虚拟文件系统指标一样都是以page为计量单位
     if (proc_pidinfo(pid, PROC_PIDREGIONINFO, 0, &pri,
                      PROC_PIDREGIONINFO_SIZE) == PROC_PIDREGIONINFO_SIZE)
     {
+	  	// 页大小 1页=4k=4096byte
         int pagesize = getpagesize();
         if (!strcmp(field, "Private_Dirty:")) {
             return (size_t)pri.pri_pages_dirtied * pagesize;
@@ -797,6 +848,7 @@ size_t zmalloc_get_smap_bytes_by_field(char *field, long pid) {
     }
     return 0;
 #endif
+    // 不是linux系统也不是mac系统
     ((void) field);
     ((void) pid);
     return 0;

@@ -297,13 +297,23 @@ int yesnotoi(char *s) {
     else return -1;
 }
 
+/**
+ * saveparams是saveparam数组 向数组中添加一个新的saveparam
+ * @param seconds 保存到saveparam结构体的成员
+ * @param changes 保存到saveparam结构体的成员
+ */
 void appendServerSaveParams(time_t seconds, int changes) {
+    // realloc在现有saveparams数组基础上多申请一个saveparam空间
     server.saveparams = zrealloc(server.saveparams,sizeof(struct saveparam)*(server.saveparamslen+1));
+	// 添加新的saveparam
     server.saveparams[server.saveparamslen].seconds = seconds;
     server.saveparams[server.saveparamslen].changes = changes;
     server.saveparamslen++;
 }
 
+/**
+ * 清除server::saveparams和server::saveparamslen
+ */
 void resetServerSaveParams(void) {
     zfree(server.saveparams);
     server.saveparams = NULL;

@@ -2743,53 +2743,101 @@ void createSharedObjects(void) {
 /**
  * 初始化server配置 即填充redisServer实例中的部分字段
  * <ul>
- *   <li>server::unixtime        系统时间</li>
- *   <li>server::daylight_active 0</li>
- *   <li>server::mstime          系统时间</li>
- *   <li>server::runid           长度40的随机字符串[0...9 a...f]</li>
- *   <li>server::replid          长度40的随机字符串[0...9 a...f]</li>
- *   <li>server::replid2         空字符串</li>
- *   <li>second_replid_offset    -1</li>
- *   <li>server::hz              10</li>
- *   <li>server::timezone        系统时间跟格林威治时间的时区差异多少秒</li>
- *   <li>server::configfile      NULL</li>
- *   <li>server::executable      NULL</li>
- *   <li>server::arch_bits       系统的字宽 32位还是64位</li>
- *   <li>server::bindaddr_count  0</li>
- *   <li>server::unixsocketperm  0</li>
- *   <li>server::ipfd::count     0</li>
- *   <li>server::tlsfd::count    0</li>
- *   <li>server::sofd            -1</li>
- *   <li>server::active_expire_enabled 1</li>
- *   <li>server::skip_checksum_validation 0</li>
- *   <li>server::saveparams NULL</li>
- *   <li>server::loading 0</li>
- *   <li>server::loading_rdb_used_mem 0</li>
- *   <li>server::logfile ""</li>
- *   <li>server::aof_state 0</li>
- *   <li>server::aof_rewrite_base_size 0</li>
- *   <li>server::aof_rewrite_scheduled 0</li>
- *   <li>server::aof_flush_sleep 0</li>
- *   <li>server::aof_last_fsync 系统时间的秒形式</li>
- *   <li>server::aof_bio_fsync_status 0</li>
- *   <li>server::aof_rewrite_time_last -1</li>
- *   <li>server::aof_rewrite_time_start -1</li>
- *   <li>server::aof_lastbgrewrite_status 0</li>
- *   <li>server::aof_delayed_fsync 0</li>
- *   <li>server::aof_fd -1</li>
- *   <li>server::aof_selected_db -1</li>
- *   <li>server::aof_flush_postponed_start 0</li>
- *   <li>server::pidfile NULL</li>
- *   <li>server::active_defrag_running 0</li>
- *   <li>server::notify_keyspace_events 0</li>
- *   <li>server::blocked_clients 0</li>
- *   <li>server::blocked_clients_by_type 数组元素全部为0</li>
- *   <li>server::shutdown_asap 0</li>
- *   <li>server::cluster_configfile "nodes.conf"</li>
- *   <li>server::cluster_module_flags 0</li>
- *   <li>server::</li>
- *   <li>server::</li>
- *   <li>server::</li>
+ *   <li>server::unixtime                              系统时间</li>
+ *   <li>server::daylight_active                       0</li>
+ *   <li>server::mstime                                系统时间</li>
+ *   <li>server::runid                                 长度40的随机字符串[0...9 a...f]</li>
+ *   <li>server::replid                                长度40的随机字符串[0...9 a...f]</li>
+ *   <li>server::replid2                               空字符串</li>
+ *   <li>second_replid_offset                          -1</li>
+ *   <li>server::hz                                    10</li>
+ *   <li>server::timezone                              系统时间跟格林威治时间的时区差异多少秒</li>
+ *   <li>server::configfile                            NULL</li>
+ *   <li>server::executable                            NULL</li>
+ *   <li>server::arch_bits                             系统的字宽 32位还是64位</li>
+ *   <li>server::bindaddr_count                        0</li>
+ *   <li>server::unixsocketperm                        0</li>
+ *   <li>server::ipfd::count                           0</li>
+ *   <li>server::tlsfd::count                          0</li>
+ *   <li>server::sofd                                  -1</li>
+ *   <li>server::active_expire_enabled                 1</li>
+ *   <li>server::skip_checksum_validation              0</li>
+ *   <li>server::loading                               0</li>
+ *   <li>server::loading_rdb_used_mem                  0</li>
+ *   <li>server::logfile                               ""</li>
+ *   <li>server::aof_state                             0</li>
+ *   <li>server::aof_rewrite_base_size                 0</li>
+ *   <li>server::aof_rewrite_scheduled                 0</li>
+ *   <li>server::aof_flush_sleep                       0</li>
+ *   <li>server::aof_last_fsync                        系统时间的秒形式</li>
+ *   <li>server::aof_bio_fsync_status                  0</li>
+ *   <li>server::aof_rewrite_time_last                 -1</li>
+ *   <li>server::aof_rewrite_time_start                -1</li>
+ *   <li>server::aof_lastbgrewrite_status              0</li>
+ *   <li>server::aof_delayed_fsync                     0</li>
+ *   <li>server::aof_fd                                -1</li>
+ *   <li>server::aof_selected_db                       -1</li>
+ *   <li>server::aof_flush_postponed_start             0</li>
+ *   <li>server::pidfile                               NULL</li>
+ *   <li>server::active_defrag_running                 0</li>
+ *   <li>server::notify_keyspace_events                0</li>
+ *   <li>server::blocked_clients                       0</li>
+ *   <li>server::blocked_clients_by_type               数组元素全部为0</li>
+ *   <li>server::shutdown_asap                         0</li>
+ *   <li>server::cluster_configfile                    "nodes.conf"</li>
+ *   <li>server::cluster_module_flags                  0</li>
+ *   <li>server::migrate_cached_sockets                dict实例</li>
+ *   <li>server::next_client_id                        1</li>
+ *   <li>server::loading_process_events_interval_bytes 2M</li>
+ *   <li>server::lruclock                              系统时间 秒<li>
+ *   <li>server::saveparams                            数组中3个元素[{60*60, 1}, {300, 100}, {60, 10000}]</li>
+ *   <li>server::saveparamslen                         3<li>
+ *   <li>server::masterauth                            NULL<li>
+ *   <li>server::masterhost                            NULL<li>
+ *   <li>server::masterport                            6379<li>
+ *   <li>server::master                                NULL<li>
+ *   <li>server::cached_master                         NULL<li>
+ *   <li>server::master_initial_offset                 -1<li>
+ *   <li>server::repl_state                            REPL_STATE_NONE(枚举值0)<li>
+ *   <li>server::repl_transfer_tmpfile                 NULL<li>
+ *   <li>server::repl_transfer_fd                      -1<li>
+ *   <li>server::repl_transfer_s                       NULL<li>
+ *   <li>server::repl_syncio_timeout                   5<li>
+ *   <li>server::repl_down_since                       0<li>
+ *   <li>server::master_repl_offset                    0<li>
+ *   <li>server::repl_backlog                          NULL<li>
+ *   <li>server::repl_backlog_histlen                  0<li>
+ *   <li>server::repl_backlog_idx                      0<li>
+ *   <li>server::repl_backlog_off                      0<li>
+ *   <li>server::repl_no_slaves_since                  系统时间(秒)<li>
+ *   <li>server::failover_end_time                     0<li>
+ *   <li>server::force_failover                        0<li>
+ *   <li>server::target_replica_host                   NULL<li>
+ *   <li>server::target_replica_port                   0<li>
+ *   <li>server::failover_state                        NO_FAILOVER枚举值0<li>
+ *   <li>server::client_obuf_limits                    长度为3的数组[{0, 0, 0}, {1024*1024*256, 1024*1024*64, 60}, {1024*1024*32, 1024*1024*8, 60}]<li>
+ *   <li>server::oom_score_adj_value                   长度为3的数组[0, 200, 800]<li>
+ *   <li>server::commands                              所有api<li>
+ *   <li>server::orig_commands                         所有api<li>
+ *   <li>server::delCommand                            命令del<li>
+ *   <li>server::multiCommand                          命令multi<li>
+ *   <li>server::lpushCommand                          命令lpush<li>
+ *   <li>server::lpopCommand                           命令lpop<li>
+ *   <li>server::rpopCommand                           命令rpop<li>
+ *   <li>server::zpopminCommand                        命令zpopmin<li>
+ *   <li>server::zpopmaxCommand                        命令zpopmax<li>
+ *   <li>server::sremCommand                           命令srem<li>
+ *   <li>server::execCommand                           命令exec<li>
+ *   <li>server::expireCommand                         命令expire<li>
+ *   <li>server::pexpireCommand                        命令pexpire<li>
+ *   <li>server::xclaimCommand                         命令xclaim<li>
+ *   <li>server::xgroupCommand                         命令xgroup<li>
+ *   <li>server::rpoplpushCommand                      命令rpoplpush<li>
+ *   <li>server::lmoveCommand                          命令lmove<li>
+ *   <li>server::watchdog_period                       0<li>
+ *   <li>server::lua_always_replicate_commands         1<li>
+ *   <li>server::client_pause_type                     CLIENT_PAUSE_OFF枚举值0<li>
+ *   <li>server::client_pause_end_time                 0<li>
  * </ul>
  */
 void initServerConfig(void) {
@@ -2908,6 +2956,9 @@ void initServerConfig(void) {
     atomicSet(server.lruclock,lruclock);
     resetServerSaveParams();
 
+	/**
+	 * 向saveparams数组中添加3个元素
+	 */
     appendServerSaveParams(60*60,1);  /* save after 1 hour and 1 change */
     appendServerSaveParams(300,100);  /* save after 5 minutes and 100 changes */
     appendServerSaveParams(60,10000); /* save after 1 minute and 10000 changes */
@@ -2942,10 +2993,26 @@ void initServerConfig(void) {
     server.failover_state = NO_FAILOVER;
 
     /* Client output buffer limits */
+	/**
+	 * 相当于数组元素复制
+	 * <ul>
+	 *   <li>{0, 0, 0}</li>
+	 *   <li>{1024*1024*256, 1024*1024*64, 60}</li>
+	 *   <li>{1024*1024*32, 1024*1024*8, 60}</li>
+	 * </ul>
+	 */
     for (j = 0; j < CLIENT_TYPE_OBUF_COUNT; j++)
         server.client_obuf_limits[j] = clientBufferLimitsDefaults[j];
 
     /* Linux OOM Score config */
+	/**
+	 * 相当于数组元素复制
+	 * <ul>
+	 *   <li>0</li>
+	 *   <li>200</li>
+	 *   <li>800</li>
+	 * </ul>
+	 */
     for (j = 0; j < CONFIG_OOM_COUNT; j++)
         server.oom_score_adj_values[j] = configOOMScoreAdjValuesDefaults[j];
 
@@ -2961,21 +3028,73 @@ void initServerConfig(void) {
     // 预定义的命令缓存到字典
     server.commands = dictCreate(&commandTableDictType,NULL);
     server.orig_commands = dictCreate(&commandTableDictType,NULL);
+	/**
+	 * 数据添加到两个dict中
+	 * <ul>
+	 *   <li>server::commands<li>
+	 *   <li>server::orig_commands<li>
+	 * <ul>
+	 */
     populateCommandTable();
+	/**
+	 * 命令del
+	 */
     server.delCommand = lookupCommandByCString("del");
+	/**
+	 * 命令multi
+	 */
     server.multiCommand = lookupCommandByCString("multi");
+	/**
+	 * 命令lpush
+	 */
     server.lpushCommand = lookupCommandByCString("lpush");
+	/**
+	 * 命令lpop
+	 */
     server.lpopCommand = lookupCommandByCString("lpop");
+	/**
+	 * 命令rpop
+	 */
     server.rpopCommand = lookupCommandByCString("rpop");
+	/**
+	 * 命令zpopmin
+	 */
     server.zpopminCommand = lookupCommandByCString("zpopmin");
+	/**
+	 * 命令zpopmax
+	 */
     server.zpopmaxCommand = lookupCommandByCString("zpopmax");
+	/**
+	 * 命令srem
+	 */
     server.sremCommand = lookupCommandByCString("srem");
+	/**
+	 * 命令exec
+	 */
     server.execCommand = lookupCommandByCString("exec");
+	/**
+	 * 命令expire
+	 */
     server.expireCommand = lookupCommandByCString("expire");
+	/**
+	 * 命令pexpire
+	 */
     server.pexpireCommand = lookupCommandByCString("pexpire");
+	/**
+	 * 命令xclaim
+	 */
     server.xclaimCommand = lookupCommandByCString("xclaim");
+	/**
+	 * 命令xgroup
+	 */
     server.xgroupCommand = lookupCommandByCString("xgroup");
+	/**
+	 * 命令rpoplpush
+	 */
     server.rpoplpushCommand = lookupCommandByCString("rpoplpush");
+	/**
+	 * 命令lmove
+	 */
     server.lmoveCommand = lookupCommandByCString("lmove");
 
     /* Debugging */

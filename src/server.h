@@ -1274,12 +1274,28 @@ struct redisServer {
     int hz;                     /* serverCron() calls frequency in hertz */
     int in_fork_child;          /* indication that this is a fork child */
     redisDb *db;
-    // 命令字典 存放所有暴露给客户端的api命令
+
+	/**
+	 * 初始化于server.c::main->initServerConfig
+	 * 初始化为dict实例
+	 * 命令字典 存放所有暴露给客户端的api命令
+	 */
     dict *commands;             /* Command table */
+
+	/**
+	 * 初始化于server.c::main->initServerConfig
+	 * 初始化为dict实例
+	 * 命令字典 存放所有暴露给客户端的api命令
+	 */
     dict *orig_commands;        /* Command table before command renaming. */
     // 事件监听器
     aeEventLoop *el;
     rax *errors;                /* Errors table */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为系统时间 秒
+	 */
     redisAtomic unsigned int lruclock; /* Clock for LRU eviction */
 
 	/**
@@ -1402,11 +1418,31 @@ struct redisServer {
     rax *clients_timeout_table; /* Radix tree for blocked clients timeouts. */
     long fixed_time_expire;     /* If > 0, expire keys against server.mstime. */
     rax *clients_index;         /* Active clients dictionary by client ID. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为CLIENT_PAUSE_OFF 枚举值0
+	 */
     pause_type client_pause_type;      /* True if clients are currently paused */
     list *paused_clients;       /* List of pause clients */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     mstime_t client_pause_end_time;    /* Time when we undo clients_paused */
     char neterr[ANET_ERR_LEN];   /* Error buffer for anet.c */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为dict实例
+	 */
     dict *migrate_cached_sockets;/* MIGRATE cached sockets */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为1
+	 */
     redisAtomic uint64_t next_client_id; /* Next client unique ID. Incremental. */
     int protected_mode;         /* Don't accept external connections. */
     int gopher_enabled;         /* If true the server will reply to gopher
@@ -1431,8 +1467,35 @@ struct redisServer {
     off_t loading_rdb_used_mem;
     off_t loading_loaded_bytes;
     time_t loading_start_time;
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为2M
+	 */
     off_t loading_process_events_interval_bytes;
+
     /* Fast pointers to often looked up command */
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 命令
+	 * <ul>
+	 *   <li>del</li>
+	 *   <li>multi</li>
+	 *   <li>lpush</li>
+	 *   <li>lpop</li>
+	 *   <li>rpop</li>
+	 *   <li>zpopmin</li>
+	 *   <li>zpoopmax</li>
+	 *   <li>srem</li>
+	 *   <li>exec</li>
+	 *   <li>expire</li>
+	 *   <li>pexpire</li>
+	 *   <li>xclaim</li>
+	 *   <li>xgroup</li>
+	 *   <li>rpoplpush</li>
+	 *   <li>lmove</li>
+	 * </ul>
+	 */
     struct redisCommand *delCommand, *multiCommand, *lpushCommand,
                         *lpopCommand, *rpopCommand, *zpopminCommand,
                         *zpopmaxCommand, *sremCommand, *execCommand,
@@ -1537,6 +1600,16 @@ struct redisServer {
     int daemonize;                  /* True if running as a daemon */
     int set_proc_title;             /* True if change proc title */
     char *proc_title_template;      /* Process title template format */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 数组元素赋值 数组有3个元素
+	 * <ul>
+	 *   <li>{0, 0, 0}</li>
+	 *   <li>{1024*1024*256, 1024*1024*64, 60}</li>
+	 *   <li>{1024*1024*32, 1024*1024*8, 60}</li>
+	 * </ul>
+	 */
     clientBufferLimitsConfig client_obuf_limits[CLIENT_TYPE_OBUF_COUNT];
     /* AOF persistence */
     int aof_enabled;                /* AOF configuration */
@@ -1671,8 +1744,29 @@ struct redisServer {
 	/**
 	 * 赋值于server.c::main->initServerConfig
 	 * 赋值为NULL
+	 *
+	 * 向这个数组中添加3个元素
+	 * <ul>
+	 *   <li>{60*60, 1}</li>
+	 *   <li>{300, 100}</li>
+	 *   <li>{60, 10000}</li>
+	 * </ul>
 	 */
     struct saveparam *saveparams;   /* Save points array for RDB */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 *
+	 * 标识的是saveparam这个数组的长度
+	 * 向这个数组中添加3个元素
+	 * <ul>
+	 *   <li>{60*60, 1}</li>
+	 *   <li>{300, 100}</li>
+	 *   <li>{60, 10000}</li>
+	 * </ul>
+	 * 添加完之后数组长度更新为3
+	 */
     int saveparamslen;              /* Number of saving points */
     char *rdb_filename;             /* Name of RDB file */
     int rdb_compression;            /* Use compression in RDB? */
@@ -1734,6 +1828,11 @@ struct redisServer {
 	 * 赋值为长度40全是0的字符串
 	 */
 	char replid2[CONFIG_RUN_ID_SIZE+1]; /* replid inherited from master*/
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     long long master_repl_offset;   /* My current replication offset */
 
 	/**
@@ -1743,15 +1842,38 @@ struct redisServer {
     long long second_replid_offset; /* Accept offsets up to this for replid2. */
     int slaveseldb;                 /* Last SELECTed DB in replication output */
     int repl_ping_slave_period;     /* Master pings the slave every N seconds */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为NULL
+	 */
     char *repl_backlog;             /* Replication backlog for partial syncs */
     long long repl_backlog_size;    /* Backlog circular buffer size */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     long long repl_backlog_histlen; /* Backlog actual data length */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     long long repl_backlog_idx;     /* Backlog circular buffer current offset,
                                        that is the next byte will'll write to.*/
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     long long repl_backlog_off;     /* Replication "master offset" of first
                                        byte in the replication backlog buffer.*/
     time_t repl_backlog_time_limit; /* Time without slaves after the backlog
                                        gets released. */
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为系统时间 秒
+	 */
     time_t repl_no_slaves_since;    /* We have no slaves since that time.
                                        Only valid if server.slaves len is 0. */
     int repl_min_slaves_to_write;   /* Min number of slaves to write. */
@@ -1763,24 +1885,80 @@ struct redisServer {
     int repl_diskless_sync_delay;   /* Delay to start a diskless repl BGSAVE. */
     /* Replication (slave) */
     char *masteruser;               /* AUTH with this user and masterauth with master */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为NULL
+	 */
     sds masterauth;                 /* AUTH with this password with master */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为NULL
+	 */
     char *masterhost;               /* Hostname of master */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为6379
+	 */
     int masterport;                 /* Port of master */
     int repl_timeout;               /* Timeout after N seconds of master idle */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为NULL
+	 */
     client *master;     /* Client that is master for this slave */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为NULL
+	 */
     client *cached_master; /* Cached master to be reused for PSYNC. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为5
+	 */
     int repl_syncio_timeout; /* Timeout for synchronous I/O calls */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0 REPL_STATE_NONE
+	 * 枚举值
+	 */
     int repl_state;          /* Replication status if the instance is a slave */
     off_t repl_transfer_size; /* Size of RDB to read from master during sync. */
     off_t repl_transfer_read; /* Amount of RDB read from master during sync. */
     off_t repl_transfer_last_fsync_off; /* Offset when we fsync-ed last time. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为NULL
+	 */
     connection *repl_transfer_s;     /* Slave -> Master SYNC connection */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为-1
+	 */
     int repl_transfer_fd;    /* Slave -> Master SYNC temp file descriptor */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为NULL
+	 */
     char *repl_transfer_tmpfile; /* Slave-> master SYNC temp file name */
     time_t repl_transfer_lastio; /* Unix time of the latest read, for timeout */
     int repl_serve_stale_data; /* Serve stale data when link is down? */
     int repl_slave_ro;          /* Slave is read only? */
     int repl_slave_ignore_maxmemory;    /* If true slaves do not evict. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     time_t repl_down_since; /* Unix time at which link with master went down */
     int repl_disable_tcp_nodelay;   /* Disable TCP_NODELAY after SYNC? */
     int slave_priority;             /* Reported in INFO and used by Sentinel. */
@@ -1791,6 +1969,11 @@ struct redisServer {
      * while the PSYNC is in progress. At the end we'll copy the fields into
      * the server->master client structure. */
     char master_replid[CONFIG_RUN_ID_SIZE+1];  /* Master PSYNC runid. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为-1
+	 */
     long long master_initial_offset;           /* Master PSYNC offset. */
     int repl_slave_lazy_flush;          /* Lazy FLUSHALL before loading DB? */
     /* Replication script cache. */
@@ -1811,6 +1994,11 @@ struct redisServer {
     int lfu_decay_time;             /* LFU counter decay factor. */
     long long proto_max_bulk_len;   /* Protocol bulk length maximum size. */
     int oom_score_adj_base;         /* Base oom_score_adj value, as observed on startup */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 数组3个元素赋值 [0, 200, 800]
+	 */
     int oom_score_adj_values[CONFIG_OOM_COUNT];   /* Linux oom_score_adj configuration */
     int oom_score_adj;                            /* If true, oom_score_adj is managed */
     int disable_thp;                              /* If true, disable THP by syscall */
@@ -1953,6 +2141,11 @@ struct redisServer {
     int lua_timedout;     /* True if we reached the time limit for script
                              execution. */
     int lua_kill;         /* Kill the script if true. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为1
+	 */
     int lua_always_replicate_commands; /* Default replication type. */
     int lua_oom;          /* OOM detected when script start? */
     /* Lazy free */
@@ -1971,7 +2164,12 @@ struct redisServer {
                                      the old "requirepass" directive for
                                      backward compatibility with Redis <= 5. */
     int acl_pubsub_default;      /* Default ACL pub/sub channels flag */
+
     /* Assert & bug reporting */
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     int watchdog_period;  /* Software watchdog period in ms. 0 = off */
     /* System hardware info */
     size_t system_memory_size;  /* Total memory in system as reported by OS */
@@ -1987,13 +2185,38 @@ struct redisServer {
     char *bgsave_cpulist; /* cpu affinity list of bgsave process. */
     /* Sentinel config */
     struct sentinelConfig *sentinel_config; /* sentinel config to load at startup time. */
+
     /* Coordinate failover info */
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     mstime_t failover_end_time; /* Deadline for failover command. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     int force_failover; /* If true then failover will be foreced at the
                          * deadline, otherwise failover is aborted. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为NULL
+	 */
     char *target_replica_host; /* Failover target host. If null during a
                                 * failover then any replica can be used. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     int target_replica_port; /* Failover target port */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为NO_FAILOVER枚举值0
+	 */
     int failover_state; /* Failover state */
 };
 

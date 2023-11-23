@@ -651,15 +651,27 @@ int ld2string(char *buf, size_t len, long double value, ld2string_mode mode) {
  * This function is not thread safe, since the state is global. */
 void getRandomBytes(unsigned char *p, size_t len) {
     /* Global state. */
+	/**
+	 * 标识方法是不是第一次被调用
+	 * 定义这样一个全局变量一般是为了保护资源或者隔离资源 也就意味着函数内部涉及资源的开辟
+	 * 需要一个全局变量来标识是否被初始化过
+	 * <ul>
+	 *   <li>如果第一次调用这个函数 就要进行资源初始化</li>
+	 *   <li>如果不是第一次调用 就可以直接复用已经开辟好的资源</li>
+	 * </ul>
+	 * 函数内部static修饰变量 这个变量存放在data内存段 作用域提升至全局 生命周期提升至整个进程的声明周期
+	 */
     static int seed_initialized = 0;
     static unsigned char seed[64]; /* 512 bit internal block size. */
     static uint64_t counter = 0; /* The counter we hash with the seed. */
 
     if (!seed_initialized) {
+	    // 第一次调用这个函数
         /* Initialize a seed and use SHA1 in counter mode, where we hash
          * the same seed with a progressive counter. For the goals of this
          * function we just need non-colliding strings, there are no
          * cryptographic security needs. */
+		// 打开文件
         FILE *fp = fopen("/dev/urandom","r");
         if (fp == NULL || fread(seed,sizeof(seed),1,fp) != 1) {
             /* Revert to a weaker seed, and in this case reseed again
@@ -668,14 +680,24 @@ void getRandomBytes(unsigned char *p, size_t len) {
                 struct timeval tv;
                 gettimeofday(&tv,NULL);
                 pid_t pid = getpid();
+				/**
+				 * 很random
+				 * <ul>
+				 *   <li>秒</li>
+				 *   <li>毫秒</li>
+				 *   <li>进程</li>
+				 *   <li>文件fd</li>
+				 * </ul>
+				 */
                 seed[j] = tv.tv_sec ^ tv.tv_usec ^ pid ^ (long)fp;
             }
         } else {
             seed_initialized = 1;
         }
+		// 关闭文件
         if (fp) fclose(fp);
     }
-
+	// 轮询数组
     while(len) {
         /* This implements SHA256-HMAC. */
         unsigned char digest[SHA256_BLOCK_SIZE];
@@ -717,11 +739,23 @@ void getRandomBytes(unsigned char *p, size_t len) {
  * given execution of Redis, so that if you are talking with an instance
  * having run_id == A, and you reconnect and it has run_id == B, you can be
  * sure that it is either a different instance or it was restarted. */
+/**
+ * 随机字符串 有效字符len个 字符内容为[0...9 a...f]
+ */
 void getRandomHexChars(char *p, size_t len) {
     char *charset = "0123456789abcdef";
     size_t j;
 
     getRandomBytes((unsigned char*)p,len);
+	/**
+	 * 随机种子是charset字符串16个字符 脚标是[0...15]
+	 * <ul>
+	 *   <li>低效的方式是对字符串长度取mod 然后根据脚标获取对应字符</li>
+	 *   <li>位运算直接获取到[0...15]的随机值 然后根据脚标获取对应字符</li>
+	 * </ul>
+	 * 这个地方使用的就是高效的位运算方式
+	 * 首先获取到随机值 因为种子的字符串长度是16 所以通过位运算计算出[0...15] 也就是只要这个随机值的低4bit的值 跟0x0f求取就行了
+	 */
     for (j = 0; j < len; j++) p[j] = charset[p[j] & 0x0F];
 }
 

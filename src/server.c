@@ -76,6 +76,11 @@ double R_Zero, R_PosInf, R_NegInf, R_Nan;
 /*================================= Globals ================================= */
 
 /* Global vars */
+/**
+ * 全局变量定义
+ * 这个变量是未初始化全局变量 定义在了静态内存BSS段
+ * 为了能让其他文件访问到这个变量 在头文件中用extern将这个变量声明为了外部变量
+ */
 struct redisServer server; /* Server global state */
 
 /* Our command table.
@@ -1939,7 +1944,15 @@ void databasesCron(void) {
  * info or not using the 'update_daylight_info' argument. Normally we update
  * such info only when calling this function from serverCron() but not when
  * calling it from call(). */
-// 把系统时间缓存到server实例中
+//
+/**
+ * 把系统时间缓存到server实例中
+ * @param update_daylight_info 标识位 是否需要更新夏令时标志
+ *                             <ul>
+ *                               <li>0 不更新夏令时标志</li>
+ *                               <li>非0 更新夏令时标志</li>
+ *                             </ul>
+ */
 void updateCachedTime(int update_daylight_info) {
     // 微秒形式
     server.ustime = ustime();
@@ -1956,6 +1969,7 @@ void updateCachedTime(int update_daylight_info) {
      * thread. The logging function will call a thread safe version of
      * localtime that has no locks. */
     if (update_daylight_info) {
+	    // 需要更新夏令时标志
         struct tm tm;
         time_t ut = server.unixtime;
 		/**
@@ -1967,6 +1981,7 @@ void updateCachedTime(int update_daylight_info) {
 		 * </ul>
 		 */
         localtime_r(&ut,&tm);
+		// 夏令时标志
         server.daylight_active = tm.tm_isdst;
     }
 }
@@ -2726,27 +2741,123 @@ void createSharedObjects(void) {
 }
 
 /**
- * @brief 初始化server配置 即填充redisServer实例中的部分字段
+ * 初始化server配置 即填充redisServer实例中的部分字段
+ * <ul>
+ *   <li>server::unixtime        系统时间</li>
+ *   <li>server::daylight_active 0</li>
+ *   <li>server::mstime          系统时间</li>
+ *   <li>server::runid           长度40的随机字符串[0...9 a...f]</li>
+ *   <li>server::replid          长度40的随机字符串[0...9 a...f]</li>
+ *   <li>server::replid2         空字符串</li>
+ *   <li>second_replid_offset    -1</li>
+ *   <li>server::hz              10</li>
+ *   <li>server::timezone        系统时间跟格林威治时间的时区差异多少秒</li>
+ *   <li>server::configfile      NULL</li>
+ *   <li>server::executable      NULL</li>
+ *   <li>server::arch_bits       系统的字宽 32位还是64位</li>
+ *   <li>server::bindaddr_count  0</li>
+ *   <li>server::unixsocketperm  0</li>
+ *   <li>server::ipfd::count     0</li>
+ *   <li>server::tlsfd::count    0</li>
+ *   <li>server::sofd            -1</li>
+ *   <li>server::active_expire_enabled 1</li>
+ *   <li>server::skip_checksum_validation 0</li>
+ *   <li>server::saveparams NULL</li>
+ *   <li>server::loading 0</li>
+ *   <li>server::loading_rdb_used_mem 0</li>
+ *   <li>server::logfile ""</li>
+ *   <li>server::aof_state 0</li>
+ *   <li>server::aof_rewrite_base_size 0</li>
+ *   <li>server::aof_rewrite_scheduled 0</li>
+ *   <li>server::aof_flush_sleep 0</li>
+ *   <li>server::aof_last_fsync 系统时间的秒形式</li>
+ *   <li>server::aof_bio_fsync_status 0</li>
+ *   <li>server::aof_rewrite_time_last -1</li>
+ *   <li>server::aof_rewrite_time_start -1</li>
+ *   <li>server::aof_lastbgrewrite_status 0</li>
+ *   <li>server::aof_delayed_fsync 0</li>
+ *   <li>server::aof_fd -1</li>
+ *   <li>server::aof_selected_db -1</li>
+ *   <li>server::aof_flush_postponed_start 0</li>
+ *   <li>server::pidfile NULL</li>
+ *   <li>server::active_defrag_running 0</li>
+ *   <li>server::notify_keyspace_events 0</li>
+ *   <li>server::blocked_clients 0</li>
+ *   <li>server::blocked_clients_by_type 数组元素全部为0</li>
+ *   <li>server::shutdown_asap 0</li>
+ *   <li>server::cluster_configfile "nodes.conf"</li>
+ *   <li>server::cluster_module_flags 0</li>
+ *   <li>server::</li>
+ *   <li>server::</li>
+ *   <li>server::</li>
+ * </ul>
  */
 void initServerConfig(void) {
     int j;
 
+	/**
+	 * 全局变量UDT的字段赋值
+	 * <ul>
+	 *   <li>server::unixtime</li>
+	 *   <li>server::daylight_active</li>
+	 *   <li>server::mstime</li>
+	 * <ul>
+	 */
     updateCachedTime(1);
+	/**
+	 * 全局变量UDT的字段赋值
+	 * server::runid
+	 * 长度40的随机字符串[0...9 a...f]
+	 */
     getRandomHexChars(server.runid,CONFIG_RUN_ID_SIZE);
+	// 字符串结束符
     server.runid[CONFIG_RUN_ID_SIZE] = '\0';
+	/**
+	 * 赋值server::replid
+	 * 长度40的随机字符串[0...9 a...f]
+	 */
     changeReplicationId();
+	/**
+	 * 赋值server
+	 * <ul>
+	 *   <li>server::replid2 赋值为空字符串</li>
+	 *   <li>server::second_replid_offset -1</li>
+	 * </ul>
+	 */
     clearReplicationId2();
+	/**
+	 * 赋值server::hz
+	 * 默认值10
+	 */
     server.hz = CONFIG_DEFAULT_HZ; /* Initialize it ASAP, even if it may get
                                       updated later after loading the config.
                                       This value may be used before the server
                                       is initialized. */
-    // 系统时间相对Greenwich相差了多少秒(时区差异)
+    /**
+     * 赋值server::timezone
+     * 系统时间相对Greenwich相差了多少秒(时区差异)
+     */
     server.timezone = getTimeZone(); /* Initialized by tzset(). */
+	/**
+     * 赋值server::configfile
+	 */
     server.configfile = NULL;
+	/**
+	 * 赋值server::executable
+	 */
     server.executable = NULL;
-	// 本机是32位还是64位
+	/**
+	 * 赋值server::arch_bits
+	 * 本机是32位还是64位
+	 */
     server.arch_bits = (sizeof(long) == 8) ? 64 : 32;
+	/**
+	 * 赋值server::bindaddr_count
+	 */
     server.bindaddr_count = 0;
+	/**
+	 * 赋值server::unixsocketperm
+	 */
     server.unixsocketperm = CONFIG_DEFAULT_UNIX_SOCKET_PERM;
     server.ipfd.count = 0;
     server.tlsfd.count = 0;
@@ -2756,14 +2867,22 @@ void initServerConfig(void) {
     server.saveparams = NULL;
     server.loading = 0;
     server.loading_rdb_used_mem = 0;
-	// 日志文件路径
+	// 日志文件路径 初始化为空字符串
     server.logfile = zstrdup(CONFIG_DEFAULT_LOGFILE);
-	// aof功能选项
+	// aof功能选项 关闭AOF
     server.aof_state = AOF_OFF;
     server.aof_rewrite_base_size = 0;
     server.aof_rewrite_scheduled = 0;
     server.aof_flush_sleep = 0;
+	/**
+	 * 时间形式秒
+	 * <ul>time库函数的使用
+	 *   <li>返回值为自计算机元年至今的时间秒数</li>
+	 *   <li>入参不为NULL的时候 返回值也会放一份在入参的指针变量中</li>
+	 * </ul>
+	 */
     server.aof_last_fsync = time(NULL);
+	// 原子赋值
     atomicSet(server.aof_bio_fsync_status,C_OK);
     server.aof_rewrite_time_last = -1;
     server.aof_rewrite_time_start = -1;
@@ -6444,6 +6563,31 @@ redisTestProc *getTestProcByName(const char *name) {
  *     </ul>
  *   </li>
  * </ul>
+ *
+ * 主要对server实例中成员进行初始化赋值
+ * <ul>
+ *   <li>server::umask 系统umask值<li>
+ *   <li>server::sentinel_mode 根据启动的redis实例而定<li>
+ *   <li>server::<li>
+ *   <li>server::<li>
+ *   <li>server::<li>
+ *   <li>server::<li>
+ *   <li>server::<li>
+ *   <li>server::<li>
+ *   <li>server::<li>
+ *   <li>server::<li>
+ *   <li>server::<li>
+ *   <li>server::<li>
+ *   <li>server::<li>
+ *   <li>server::<li>
+ *   <li>server::<li>
+ *   <li>server::<li>
+ *   <li>server::<li>
+ *   <li>server::<li>
+ *   <li>server::<li>
+ *   <li>server::<li>
+ *   <li>server::<li>
+ * </ul>
  */
 int main(int argc, char **argv) {
     // 记录当前系统时间
@@ -6538,10 +6682,13 @@ int main(int argc, char **argv) {
      * race condition with threads that could be creating files or directories.
      */
 	/**
+	 * 赋值server::umask
 	 * 入参0777是8进制
 	 * 这个地方这样调用两次的原因在于利用了这个函数特性 既不改变新建文件的权限 又能记下默认的umask值
 	 * umask函数入参是要移除的权限 出参设置新值之前的旧值
 	 * 因此先调用一次函数取出来umask值 再把umask值设置回去 两次调用并没有改变umask值
+	 *
+	 * 博客地址 https://bannirui.github.io/2023/11/15/Redis-2%E5%88%B7-0x06-%E6%96%B0%E5%BB%BA%E6%96%87%E4%BB%B6%E7%9B%AE%E5%BD%95%E6%9D%83%E9%99%90%E4%B8%8Eumask%E5%80%BC/
 	 */
     umask(server.umask = umask(0777));
 
@@ -6550,6 +6697,7 @@ int main(int argc, char **argv) {
     getRandomBytes(hashseed,sizeof(hashseed));
     dictSetHashFunctionSeed(hashseed);
     /**
+     * 赋值server::sentinel_mode
      * <p>是否启动哨兵模式</p>
      * <ul>
      *   <li>执行的redis-sentinel可执行文件</li>
@@ -6557,7 +6705,10 @@ int main(int argc, char **argv) {
      * </ul>
      */
     server.sentinel_mode = checkForSentinelMode(argc,argv);
-	// extern struct redisServer server 已经创建了server的全局实例 对其进行字段填充
+	// extern struct redisServer server
+	/**
+	 * 全局变量UDT的赋值
+	 */
     initServerConfig();
     // ACL子系统初始化
     ACLInit(); /* The ACL subsystem must be initialized ASAP because the

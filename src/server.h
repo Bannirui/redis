@@ -1237,8 +1237,19 @@ struct redisServer {
     pid_t pid;                  /* Main process pid. */
     // 线程id
     pthread_t main_thread_id;         /* Main thread id */
-    // 配置文件的绝对路径
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为NULL
+	 * 配置文件的绝对路径
+	 */
     char *configfile;           /* Absolute config file path, or NULL */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为NULL
+	 * 服务实例 可执行文件的绝对路径
+	 */
     char *executable;           /* Absolute executable file path. */
     char **exec_argv;           /* Executable argv vector (copy). */
     // 默认false 是否开启动态调整serverCron的执行频率 动态的依据是服务端根据要处理的通信的客户端数量决定 客户端数量越多 就适当增加serverCron执行频率
@@ -1247,9 +1258,19 @@ struct redisServer {
     int config_hz;              /* Configured HZ value. May be different than
                                    the actual 'hz' field value if dynamic-hz
                                    is enabled. */
-	// 系统默认的umask值 用于文件权限计算
+	/**
+	 * 赋值于server.c::main
+	 * 赋值为系统默认的umask值
+	 * 用于文件权限计算
+	 */
     mode_t umask;               /* The umask value of the process on startup */
-    // serverCron这个周期性定时任务1s被执行多少次 默认值是10 也就是说定时任务期待每隔100ms被执行一次
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为10
+     * serverCron这个周期性定时任务1s被执行多少次
+     * 默认值是10 也就是说定时任务期待每隔100ms被执行一次
+	 */
     int hz;                     /* serverCron() calls frequency in hertz */
     int in_fork_child;          /* indication that this is a fork child */
     redisDb *db;
@@ -1260,12 +1281,30 @@ struct redisServer {
     aeEventLoop *el;
     rax *errors;                /* Errors table */
     redisAtomic unsigned int lruclock; /* Clock for LRU eviction */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     volatile sig_atomic_t shutdown_asap; /* SHUTDOWN needed ASAP */
     int activerehashing;        /* Incremental rehash in serverCron() */
-    int active_defrag_running;  /* Active defragmentation running (holds current scan aggressiveness) */
-    char *pidfile;              /* PID file path */
+
 	/**
-	 * 本机架构类型
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
+    int active_defrag_running;  /* Active defragmentation running (holds current scan aggressiveness) */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为NULL
+	 */
+    char *pidfile;              /* PID file path */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为64
+	 * 本机架构类型 内存字宽
 	 * <ul>
 	 *   <li>32位</li>
 	 *   <li>64位</li>
@@ -1274,8 +1313,22 @@ struct redisServer {
     int arch_bits;              /* 32 or 64 depending on sizeof(long) */
     // 记录serverCron定时任务执行了多少次
     int cronloops;              /* Number of times the cron function run */
+
+	/**
+	 * 赋值于 server.c::main->initServerConfig->getRandomHexChars
+	 * 赋值为长度为40的随机字符串[0...9 a...f]
+	 * 字符串形式 预留一个结束符'\0'
+	 */
     char runid[CONFIG_RUN_ID_SIZE+1];  /* ID always different at every exec. */
-    // 1标识启用哨兵模式
+
+    /**
+     * 赋值于 server.c::main
+     * 标识程序启动模式
+     * <ul>
+     *   <li>0 标识不启用哨兵模式</li>
+     *   <li></1 标识启用哨兵模式li>
+     * </ul>
+     */
     int sentinel_mode;          /* True if this instance is a Sentinel. */
     size_t initial_memory_usage; /* Bytes used after initialization. */
     int always_show_logo;       /* Show logo even for non-stdout logging. */
@@ -1302,14 +1355,41 @@ struct redisServer {
     // 默认值511
     int tcp_backlog;            /* TCP listen() backlog */
     char *bindaddr[CONFIG_BINDADDR_MAX]; /* Addresses we should bind to */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     int bindaddr_count;         /* Number of addresses in server.bindaddr[] */
     char *unixsocket;           /* UNIX socket path */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     mode_t unixsocketperm;      /* UNIX socket permission */
-    // 服务端端口6379的监听socket
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * ipfd::count赋值为0
+	 * 服务端端口6379监听的socket
+	 * <ul>
+	 *   <li>监听了多少个客户端socket</li>
+	 *   <li>监听的客户端socket列表</li>
+	 * </ul>
+	 */
     socketFds ipfd;             /* TCP socket file descriptors */
-    // ssl相关socket的监听 默认不监听
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * tlsfd::count赋值为0
+	 */
     socketFds tlsfd;            /* TLS socket file descriptors */
-    // unix Socket监听
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为-1
+	 */
     int sofd;                   /* Unix socket file descriptor */
     socketFds cfd;              /* Cluster bus listening socket */
     list *clients;              /* List of active clients */
@@ -1337,8 +1417,17 @@ struct redisServer {
     long long events_processed_while_blocked; /* processEventsWhileBlocked() */
 
     /* RDB / AOF loading information */
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     volatile sig_atomic_t loading; /* We are loading data from disk if true */
     off_t loading_total_bytes;
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     off_t loading_rdb_used_mem;
     off_t loading_loaded_bytes;
     time_t loading_start_time;
@@ -1419,10 +1508,20 @@ struct redisServer {
     int verbosity;                  /* Loglevel in redis.conf */
     int maxidletime;                /* Client timeout in seconds */
     int tcpkeepalive;               /* Set SO_KEEPALIVE if non-zero. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为1
+	 */
     int active_expire_enabled;      /* Can be disabled for testing purposes. */
     int active_expire_effort;       /* From 1 (default) to 10, active effort. */
     int active_defrag_enabled;
     int sanitize_dump_payload;      /* Enables deep sanitization for ziplist and listpack in RDB and RESTORE. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     int skip_checksum_validation;   /* Disables checksum validateion for RDB and RESTORE payload. */
     int jemalloc_bg_thread;         /* Enable jemalloc background thread */
     size_t active_defrag_ignore_bytes; /* minimum amount of fragmentation waste to start active defrag */
@@ -1441,7 +1540,10 @@ struct redisServer {
     clientBufferLimitsConfig client_obuf_limits[CLIENT_TYPE_OBUF_COUNT];
     /* AOF persistence */
     int aof_enabled;                /* AOF configuration */
+
 	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
 	 * aof功能选项
 	 * <ul>
 	 *   <li>0 AOF_OFF 关闭aof机制</li>
@@ -1456,21 +1558,80 @@ struct redisServer {
     int aof_no_fsync_on_rewrite;    /* Don't fsync if a rewrite is in prog. */
     int aof_rewrite_perc;           /* Rewrite AOF if % growth is > M and... */
     off_t aof_rewrite_min_size;     /* the AOF file is at least N bytes. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     off_t aof_rewrite_base_size;    /* AOF size on latest startup or rewrite. */
     off_t aof_current_size;         /* AOF current size. */
     off_t aof_fsync_offset;         /* AOF offset which is already synced to disk. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     int aof_flush_sleep;            /* Micros to sleep before flush. (used by tests) */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     int aof_rewrite_scheduled;      /* Rewrite once BGSAVE terminates. */
     list *aof_rewrite_buf_blocks;   /* Hold changes during an AOF rewrite. */
     sds aof_buf;      /* AOF buffer, written before entering the event loop */
-    // aof文件fd
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为-1
+     * aof文件fd
+	 */
     int aof_fd;       /* File descriptor of currently selected AOF file */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为-1
+	 */
     int aof_selected_db; /* Currently selected DB in AOF */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     time_t aof_flush_postponed_start; /* UNIX time of postponed AOF flush */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为系统时间的秒形式
+	 */
     time_t aof_last_fsync;            /* UNIX time of last fsync() */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为-1
+	 */
     time_t aof_rewrite_time_last;   /* Time used by last AOF rewrite run. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为-1
+	 */
     time_t aof_rewrite_time_start;  /* Current AOF rewrite start time. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 * <ul>
+	 *   <li>0 C_OK</li>
+	 *   <li>-1 C_ERR</li>
+	 * </ul>
+	 */
     int aof_lastbgrewrite_status;   /* C_OK or C_ERR */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     unsigned long aof_delayed_fsync;  /* delayed AOF fsync() counter */
     int aof_rewrite_incremental_fsync;/* fsync incrementally while aof rewriting? */
     int rdb_save_incremental_fsync;   /* fsync incrementally while rdb saving? */
@@ -1478,6 +1639,15 @@ struct redisServer {
     int aof_last_write_errno;       /* Valid if aof write/fsync status is ERR */
     int aof_load_truncated;         /* Don't stop on unexpected AOF EOF. */
     int aof_use_rdb_preamble;       /* Use RDB preamble on AOF rewrites. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 * <ul>
+	 *   <li>0 C_OK</li>
+	 *   <li>-1 C_ERR</li>
+	 * </ul>
+	 */
     redisAtomic int aof_bio_fsync_status; /* Status of AOF fsync in bio job. */
     redisAtomic int aof_bio_fsync_errno;  /* Errno of AOF fsync in bio job. */
     /* AOF pipes used to communicate between parent and child during rewrite. */
@@ -1497,6 +1667,11 @@ struct redisServer {
      */
     long long dirty;                /* Changes to DB from the last save */
     long long dirty_before_bgsave;  /* Used to restore dirty on failed BGSAVE */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为NULL
+	 */
     struct saveparam *saveparams;   /* Save points array for RDB */
     int saveparamslen;              /* Number of saving points */
     char *rdb_filename;             /* Name of RDB file */
@@ -1533,7 +1708,11 @@ struct redisServer {
     redisOpArray also_propagate;    /* Additional command to propagate. */
     int replication_allowed;        /* Are we allowed to replicate? */
     /* Logging */
-	// 日志文件路径
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为"" 空字符串
+	 * 日志文件路径
+	 */
     char *logfile;                  /* Path of log file */
     int syslog_enabled;             /* Is syslog enabled? */
     char *syslog_ident;             /* Syslog ident */
@@ -1544,9 +1723,23 @@ struct redisServer {
     int use_exit_on_panic;          /* Use exit() on panic and assert rather than
                                      * abort(). useful for Valgrind. */
     /* Replication (master) */
+	/**
+	 * 赋值于server.c::main->initServerConfig->changeReplicationId
+	 * 赋值为长度40的随机字符串[0...9 a...f]
+	 */
     char replid[CONFIG_RUN_ID_SIZE+1];  /* My current replication ID. */
-    char replid2[CONFIG_RUN_ID_SIZE+1]; /* replid inherited from master*/
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->clearReplicationId2
+	 * 赋值为长度40全是0的字符串
+	 */
+	char replid2[CONFIG_RUN_ID_SIZE+1]; /* replid inherited from master*/
     long long master_repl_offset;   /* My current replication offset */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->clearReplicationId2
+	 * 赋值为-1
+	 */
     long long second_replid_offset; /* Accept offsets up to this for replid2. */
     int slaveseldb;                 /* Last SELECTed DB in replication output */
     int repl_ping_slave_period;     /* Master pings the slave every N seconds */
@@ -1621,8 +1814,18 @@ struct redisServer {
     int oom_score_adj_values[CONFIG_OOM_COUNT];   /* Linux oom_score_adj configuration */
     int oom_score_adj;                            /* If true, oom_score_adj is managed */
     int disable_thp;                              /* If true, disable THP by syscall */
+
     /* Blocked clients */
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     unsigned int blocked_clients;   /* # of clients executing a blocking cmd.*/
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 数组元素全部赋值为0
+	 */
     unsigned int blocked_clients_by_type[BLOCKED_NUM];
     list *unblocked_clients; /* list of clients to unblock before next loop */
     list *ready_keys;        /* List of readyList structures for BLPOP & co */
@@ -1647,12 +1850,24 @@ struct redisServer {
     /* List parameters */
     int list_max_ziplist_size;
     int list_compress_depth;
+
     /* time cache */
-	// 服务端的时间 秒 声明为原子类型的变量 即后续赋值操作为原子操作
-    redisAtomic time_t unixtime; /* Unix time sampled every cron cycle. */
-	// 系统时间相对Greenwich相差了多少秒
-    time_t timezone;            /* Cached timezone. As set by tzset(). */
 	/**
+	 * 赋值于server.c::main->initServerConfig->updateCachedTime
+	 * 服务端的时间 秒
+	 * 声明为原子类型的变量 即后续赋值操作为原子操作
+	 */
+    redisAtomic time_t unixtime; /* Unix time sampled every cron cycle. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 系统时间跟格林威治时间的时区差异多少秒
+	 */
+    time_t timezone;            /* Cached timezone. As set by tzset(). */
+
+	/**
+	 * server.c::main->initServerConfig->updateCachedTime
+	 * 赋值为0
 	 * 描述了server实例中保存的时间的夏令时(DST)标志
 	 * <ul>
 	 *   <li>0 不是DST</li>
@@ -1660,9 +1875,17 @@ struct redisServer {
 	 * </ul>
 	 */
     int daylight_active;        /* Currently in daylight saving time. */
-	// 服务端的时间 毫秒
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->updateCachedTime
+	 * 服务端的时间 毫秒
+	 */
     mstime_t mstime;            /* 'unixtime' in milliseconds. */
-	// 服务端的时间 微秒
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->updateCachedTime
+	 * 赋值为系统时间 微秒
+	 */
     ustime_t ustime;            /* 'unixtime' in microseconds. */
     size_t blocking_op_nesting; /* Nesting level of blocking operation, used to reset blocked_last_cron. */
     long long blocked_last_cron; /* Indicate the mstime of the last time we did cron jobs from a blocking operation */
@@ -1670,11 +1893,21 @@ struct redisServer {
     // 记录订阅的所有client
     dict *pubsub_channels;  /* Map channels to list of subscribed clients */
     dict *pubsub_patterns;  /* A dict of pubsub_patterns */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     int notify_keyspace_events; /* Events to propagate via Pub/Sub. This is an
                                    xor of NOTIFY_... flags. */
     /* Cluster */
     int cluster_enabled;      /* Is cluster enabled? */
     mstime_t cluster_node_timeout; /* Cluster node timeout. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为nodes.conf
+	 */
     char *cluster_configfile; /* Cluster auto-generated config file name. */
     struct clusterState *cluster;  /* State of the cluster */
     int cluster_migration_barrier; /* Cluster replicas migration barrier. */
@@ -1688,6 +1921,11 @@ struct redisServer {
     int cluster_announce_port;     /* base port to announce on cluster bus. */
     int cluster_announce_tls_port; /* TLS port to announce on cluster bus. */
     int cluster_announce_bus_port; /* bus port to announce on cluster bus. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig
+	 * 赋值为0
+	 */
     int cluster_module_flags;      /* Set of flags that Redis modules are able
                                       to set in order to suppress certain
                                       native Redis Cluster features. Check the
@@ -1882,7 +2120,7 @@ typedef struct {
  * Extern declarations
  *----------------------------------------------------------------------------*/
 
-// 创建了redisServer实例 全局
+// 在server.c文件中将其定义为了全局变量 这个地方用extern修饰将变量声明为外部变量 让其他文件也能访问到这个变量
 extern struct redisServer server;
 // 相当于单例
 extern struct sharedObjectsStruct shared;

@@ -2789,55 +2789,55 @@ void createSharedObjects(void) {
  *   <li>server::migrate_cached_sockets                dict实例</li>
  *   <li>server::next_client_id                        1</li>
  *   <li>server::loading_process_events_interval_bytes 2M</li>
- *   <li>server::lruclock                              系统时间 秒<li>
+ *   <li>server::lruclock                              系统时间 秒</li>
  *   <li>server::saveparams                            数组中3个元素[{60*60, 1}, {300, 100}, {60, 10000}]</li>
- *   <li>server::saveparamslen                         3<li>
- *   <li>server::masterauth                            NULL<li>
- *   <li>server::masterhost                            NULL<li>
- *   <li>server::masterport                            6379<li>
- *   <li>server::master                                NULL<li>
- *   <li>server::cached_master                         NULL<li>
- *   <li>server::master_initial_offset                 -1<li>
- *   <li>server::repl_state                            REPL_STATE_NONE(枚举值0)<li>
- *   <li>server::repl_transfer_tmpfile                 NULL<li>
- *   <li>server::repl_transfer_fd                      -1<li>
- *   <li>server::repl_transfer_s                       NULL<li>
- *   <li>server::repl_syncio_timeout                   5<li>
- *   <li>server::repl_down_since                       0<li>
- *   <li>server::master_repl_offset                    0<li>
- *   <li>server::repl_backlog                          NULL<li>
- *   <li>server::repl_backlog_histlen                  0<li>
- *   <li>server::repl_backlog_idx                      0<li>
- *   <li>server::repl_backlog_off                      0<li>
- *   <li>server::repl_no_slaves_since                  系统时间(秒)<li>
- *   <li>server::failover_end_time                     0<li>
- *   <li>server::force_failover                        0<li>
- *   <li>server::target_replica_host                   NULL<li>
- *   <li>server::target_replica_port                   0<li>
- *   <li>server::failover_state                        NO_FAILOVER枚举值0<li>
- *   <li>server::client_obuf_limits                    长度为3的数组[{0, 0, 0}, {1024*1024*256, 1024*1024*64, 60}, {1024*1024*32, 1024*1024*8, 60}]<li>
- *   <li>server::oom_score_adj_value                   长度为3的数组[0, 200, 800]<li>
- *   <li>server::commands                              所有api<li>
- *   <li>server::orig_commands                         所有api<li>
- *   <li>server::delCommand                            命令del<li>
- *   <li>server::multiCommand                          命令multi<li>
- *   <li>server::lpushCommand                          命令lpush<li>
- *   <li>server::lpopCommand                           命令lpop<li>
- *   <li>server::rpopCommand                           命令rpop<li>
- *   <li>server::zpopminCommand                        命令zpopmin<li>
- *   <li>server::zpopmaxCommand                        命令zpopmax<li>
- *   <li>server::sremCommand                           命令srem<li>
- *   <li>server::execCommand                           命令exec<li>
- *   <li>server::expireCommand                         命令expire<li>
- *   <li>server::pexpireCommand                        命令pexpire<li>
- *   <li>server::xclaimCommand                         命令xclaim<li>
- *   <li>server::xgroupCommand                         命令xgroup<li>
- *   <li>server::rpoplpushCommand                      命令rpoplpush<li>
- *   <li>server::lmoveCommand                          命令lmove<li>
- *   <li>server::watchdog_period                       0<li>
- *   <li>server::lua_always_replicate_commands         1<li>
- *   <li>server::client_pause_type                     CLIENT_PAUSE_OFF枚举值0<li>
- *   <li>server::client_pause_end_time                 0<li>
+ *   <li>server::saveparamslen                         3</li>
+ *   <li>server::masterauth                            NULL</li>
+ *   <li>server::masterhost                            NULL</li>
+ *   <li>server::masterport                            6379</li>
+ *   <li>server::master                                NULL</li>
+ *   <li>server::cached_master                         NULL</li>
+ *   <li>server::master_initial_offset                 -1</li>
+ *   <li>server::repl_state                            REPL_STATE_NONE(枚举值0)</li>
+ *   <li>server::repl_transfer_tmpfile                 NULL</li>
+ *   <li>server::repl_transfer_fd                      -1</li>
+ *   <li>server::repl_transfer_s                       NULL</li>
+ *   <li>server::repl_syncio_timeout                   5</li>
+ *   <li>server::repl_down_since                       0</li>
+ *   <li>server::master_repl_offset                    0</li>
+ *   <li>server::repl_backlog                          NULL</li>
+ *   <li>server::repl_backlog_histlen                  0</li>
+ *   <li>server::repl_backlog_idx                      0</li>
+ *   <li>server::repl_backlog_off                      0</li>
+ *   <li>server::repl_no_slaves_since                  系统时间(秒)</li>
+ *   <li>server::failover_end_time                     0</li>
+ *   <li>server::force_failover                        0</li>
+ *   <li>server::target_replica_host                   NULL</li>
+ *   <li>server::target_replica_port                   0</li>
+ *   <li>server::failover_state                        NO_FAILOVER枚举值0</li>
+ *   <li>server::client_obuf_limits                    长度为3的数组[{0, 0, 0}, {1024*1024*256, 1024*1024*64, 60}, {1024*1024*32, 1024*1024*8, 60}]</li>
+ *   <li>server::oom_score_adj_value                   长度为3的数组[0, 200, 800]</li>
+ *   <li>server::commands                              所有api</li>
+ *   <li>server::orig_commands                         所有api</li>
+ *   <li>server::delCommand                            命令del</li>
+ *   <li>server::multiCommand                          命令multi</li>
+ *   <li>server::lpushCommand                          命令lpush</li>
+ *   <li>server::lpopCommand                           命令lpop</li>
+ *   <li>server::rpopCommand                           命令rpop</li>
+ *   <li>server::zpopminCommand                        命令zpopmin</li>
+ *   <li>server::zpopmaxCommand                        命令zpopmax</li>
+ *   <li>server::sremCommand                           命令srem</li>
+ *   <li>server::execCommand                           命令exec</li>
+ *   <li>server::expireCommand                         命令expire</li>
+ *   <li>server::pexpireCommand                        命令pexpire</li>
+ *   <li>server::xclaimCommand                         命令xclaim</li>
+ *   <li>server::xgroupCommand                         命令xgroup</li>
+ *   <li>server::rpoplpushCommand                      命令rpoplpush</li>
+ *   <li>server::lmoveCommand                          命令lmove</li>
+ *   <li>server::watchdog_period                       0</li>
+ *   <li>server::lua_always_replicate_commands         1</li>
+ *   <li>server::client_pause_type                     CLIENT_PAUSE_OFF枚举值0</li>
+ *   <li>server::client_pause_end_time                 0</li>
  * </ul>
  */
 void initServerConfig(void) {
@@ -3110,6 +3110,92 @@ void initServerConfig(void) {
     server.client_pause_type = CLIENT_PAUSE_OFF;
     server.client_pause_end_time = 0;   
 
+	/**
+	 * 初始化redisServer成员
+	 * <ul>
+	 *   <li>server::rdb_checksum 1</li>
+	 *   <li>server::daemonize 0</li>
+	 *   <li>server::io_threads_do_reads 0</li>
+	 *   <li>server::lua_always_replicate_commands 1</li>
+	 *   <li>server::always_show-logo 0</li>
+	 *   <li>server::protected_mode 1</li>
+	 *   <li>server::rdbc_ompression 1</li>
+	 *   <li>server::rdb_del_sync_files 0</li>
+	 *   <li>server::activerehashing 1</li>
+	 *   <li>server::stop_writes_on_bgsave_err 1</li>
+	 *   <li>server::set_proc_title 1</li>
+	 *   <li>server::dynamic_hz 1</li>
+	 *   <li>server::lazyfree_lazy_eviction 0</li>
+	 *   <li>server::lazyfree_lazy_expire 0</li>
+	 *   <li>server::lazyfree_lazy_server_del 0</li>
+	 *   <li>server::lazyfree_lazy_user_del 0</li>
+	 *   <li>server::lazyfree_lazy_user_flush 0</li>
+	 *   <li>server::repl_disable_tcp_nodelay 0</li>
+	 *   <li>server::repl_diskless_sync 0</li>
+	 *   <li>server::gopher_enable 0</li>
+	 *   <li>server::aof_rewrite_incremental_fsync 1</li>
+	 *   <li>server::aof_no_fsync_on_rewrite 0</li>
+	 *   <li>server::cluster_require_full_coverage 1</li>
+	 *   <li>server::rdb_save_incremental_fsync 1</li>
+	 *   <li>server::aof_load_truncated 1</li>
+	 *   <li>server::aof_use_rdb_peramble 1</li>
+	 *   <li>server::cluster_slave_no_failover 0</li>
+	 *   <li>server::repl_slave_lazy_flush 0</li>
+	 *   <li>server::repl_server_state_data 1</li>
+	 *   <li>server::repl_slave_ro 1</li>
+	 *   <li>server::repl_slave_ignore_maxmemory 1</li>
+	 *   <li>server::jemalloc_bg_thread 1</li>
+	 *   <li>server::active_defrag_enabled 0</li>
+	 *   <li>server::syslog_enabled 0</li>
+	 *   <li>server::cluster_enabled 0</li>
+	 *   <li>server::aof_enabled 0</li>
+	 *   <li>server::cluster_allow_reads_when_down 0</li>
+	 *   <li>server::crashlog_enabled 1</li>
+	 *   <li>server::memcheck_enabled 1</li>
+	 *   <li>server::use_exit_on_panic 0</li>
+	 *   <li>server::disable_thp 1</li>
+	 *   <li>server::cluster_allow_replica_migration 1</li>
+	 *   <li>server::replica_announced 1</li>
+	 *   <li>server::acl_filename ""空字符串</li>
+	 *   <li>server::unixsocket NULL</li>
+	 *   <li>server::pidfile NULL</li>
+	 *   <li>server::slave_announce_ip NULL</li>
+	 *   <li>server::masteruser NULL</li>
+	 *   <li>server::cluster_announce_ip NULL</li>
+	 *   <li>server::syslog_ident redis</li>
+	 *   <li>server::rdb_filename dump.rdb</li>
+	 *   <li>server::aof_filename appendonly.aof</li>
+	 *   <li>server::server_cpulist NULL</li>
+	 *   <li>server::bio_cpulist NULL</li>
+	 *   <li>server::aof_rewrite_cpulist NULL</li>
+	 *   <li>server::bgsave_cpulist NULL</li>
+	 *   <li>server::proc_title_template "{title} {listen-addr} {server-mode}"</li>
+	 *   <li>server::masterauth NULL</li>
+	 *   <li>server::requirepass NULL</li>
+	 *   <li>server::supervised_mode SUPERVISED_NONE枚举值0</li>
+	 *   <li>server::repl_diskless_load REPL_DISKLESS_LOAD_DISABLED枚举值0</li>
+	 *   <li>server::verbosity LL_NOTICE枚举值2</li>
+	 *   <li>server::maxmemory_policy_enum MAXMEMORY_NO_EVICTION枚举值7<<8</li>
+	 *   <li>server::aof_fsync AOF_FSYNC_EVERYSEC枚举值2</li>
+	 *   <li>server::oom_score_adj OOM_SCORE_ADJ_NO枚举值0</li>
+	 *   <li>server::acl_pubsub_default USER_FLAG_ALLCHANNELS枚举值1<<5</li>
+	 *   <li>server::sanitize_dump_payload SANITIZE_DUMP_NO枚举值0</li>
+	 *   <li>server::</li>
+	 *   <li>server::</li>
+	 *   <li>server::</li>
+	 *   <li>server::</li>
+	 *   <li>server::</li>
+	 *   <li>server::</li>
+	 *   <li>server::</li>
+	 *   <li>server::</li>
+	 *   <li>server::</li>
+	 *   <li>server::</li>
+	 *   <li>server::</li>
+	 *   <li>server::</li>
+	 *   <li>server::</li>
+	 *   <li>server::</li>
+	 * </ul>
+	 */
     initConfigValues();
 }
 

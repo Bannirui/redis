@@ -1259,7 +1259,12 @@ struct redisServer {
 	 * 默认false 是否开启动态调整serverCron的执行频率 动态的依据是服务端根据要处理的通信的客户端数量决定 客户端数量越多 就适当增加serverCron执行频率
 	 */
     int dynamic_hz;             /* Change hz value depending on # of clients. */
-    // 默认值10 用在动态调整serverCron执行频率场景 作为基准的hz 在此基准上进行调整
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为10
+     * 用在动态调整serverCron执行频率场景 作为基准的hz 在此基准上进行调整
+	 */
     int config_hz;              /* Configured HZ value. May be different than
                                    the actual 'hz' field value if dynamic-hz
                                    is enabled. */
@@ -1379,11 +1384,24 @@ struct redisServer {
     pid_t child_pid;            /* PID of current child */
     int child_type;             /* Type of current child */
     client *module_client;      /* "Fake" client to call Redis from modules */
+
     /* Networking */
-    // redis监听的知名端口6379
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为6379
+	 */
     int port;                   /* TCP listening port */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为0
+	 */
     int tls_port;               /* TLS listening port */
-    // 默认值511
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为511
+	 */
     int tcp_backlog;            /* TCP listen() backlog */
     char *bindaddr[CONFIG_BINDADDR_MAX]; /* Addresses we should bind to */
 
@@ -1477,6 +1495,11 @@ struct redisServer {
 	 */
     int gopher_enabled;         /* If true the server will reply to gopher
                                    queries. Will still serve RESP2 queries. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为1
+	 */
     int io_threads_num;         /* Number of IO threads to use. */
 
 	/**
@@ -1563,7 +1586,17 @@ struct redisServer {
     long long stat_sync_partial_err;/* Number of unaccepted PSYNC requests. */
     list *slowlog;                  /* SLOWLOG list of commands */
     long long slowlog_entry_id;     /* SLOWLOG current entry ID */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为10000
+	 */
     long long slowlog_log_slower_than; /* SLOWLOG time limit (to get logged) */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为128
+	 */
     unsigned long slowlog_max_len;     /* SLOWLOG max number of items logged */
     struct malloc_stats cron_malloc_stats; /* sampled in serverCron(). */
     redisAtomic long long stat_net_input_bytes; /* Bytes read from network. */
@@ -1609,7 +1642,17 @@ struct redisServer {
 	 * 赋值为LL_NOTICE枚举值2
 	 */
     int verbosity;                  /* Loglevel in redis.conf */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为0
+	 */
     int maxidletime;                /* Client timeout in seconds */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为300
+	 */
     int tcpkeepalive;               /* Set SO_KEEPALIVE if non-zero. */
 
 	/**
@@ -1617,6 +1660,11 @@ struct redisServer {
 	 * 赋值为1
 	 */
     int active_expire_enabled;      /* Can be disabled for testing purposes. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为1
+	 */
     int active_expire_effort;       /* From 1 (default) to 10, active effort. */
 
 	/**
@@ -1642,13 +1690,53 @@ struct redisServer {
 	 * 赋值为1
 	 */
     int jemalloc_bg_thread;         /* Enable jemalloc background thread */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为100<<20
+	 */
     size_t active_defrag_ignore_bytes; /* minimum amount of fragmentation waste to start active defrag */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为10
+	 */
     int active_defrag_threshold_lower; /* minimum percentage of fragmentation to start active defrag */
+
+	/**
+	 * 赋值为server.c::main->initServerConfig->initConfigValues
+	 * 赋值于100
+	 */
     int active_defrag_threshold_upper; /* maximum percentage of fragmentation at which we use maximum effort */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为1
+	 */
     int active_defrag_cycle_min;       /* minimal effort for defrag in CPU percentage */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为25
+	 */
     int active_defrag_cycle_max;       /* maximal effort for defrag in CPU percentage */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为1000
+	 */
     unsigned long active_defrag_max_scan_fields; /* maximum number of fields of set/hash/zset/list to process from within the main dict scan */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为1024M
+	 */
     size_t client_max_querybuf_len; /* Limit for client query buffer length */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为16
+	 */
     int dbnum;                      /* Total number of configured DBs */
     int supervised;                 /* 1 if supervised, 0 otherwise. */
 
@@ -1723,7 +1811,17 @@ struct redisServer {
 	 * 赋值为0
 	 */
     int aof_no_fsync_on_rewrite;    /* Don't fsync if a rewrite is in prog. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为100
+	 */
     int aof_rewrite_perc;           /* Rewrite AOF if % growth is > M and... */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为64M
+	 */
     off_t aof_rewrite_min_size;     /* the AOF file is at least N bytes. */
 
 	/**
@@ -1928,9 +2026,19 @@ struct redisServer {
     int rdb_pipe_numconns_writing;  /* Number of rdb conns with pending writes. */
     char *rdb_pipe_buff;            /* In diskless replication, this buffer holds data */
     int rdb_pipe_bufflen;           /* that was read from the the rdb pipe. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为0
+	 */
     int rdb_key_save_delay;         /* Delay in microseconds between keys while
                                      * writing the RDB. (for testings). negative
                                      * value means fractions of microsecons (on average). */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为0
+	 */
     int key_load_delay;             /* Delay in microseconds between keys while
                                      * loading aof or rdb. (for testings). negative
                                      * value means fractions of microsecons (on average). */
@@ -2005,6 +2113,11 @@ struct redisServer {
 	 */
     long long second_replid_offset; /* Accept offsets up to this for replid2. */
     int slaveseldb;                 /* Last SELECTed DB in replication output */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为10
+	 */
     int repl_ping_slave_period;     /* Master pings the slave every N seconds */
 
 	/**
@@ -2012,6 +2125,11 @@ struct redisServer {
 	 * 赋值为NULL
 	 */
     char *repl_backlog;             /* Replication backlog for partial syncs */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为1M
+	 */
     long long repl_backlog_size;    /* Backlog circular buffer size */
 
 	/**
@@ -2032,6 +2150,11 @@ struct redisServer {
 	 */
     long long repl_backlog_off;     /* Replication "master offset" of first
                                        byte in the replication backlog buffer.*/
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为60*60
+	 */
     time_t repl_backlog_time_limit; /* Time without slaves after the backlog
                                        gets released. */
 	/**
@@ -2040,7 +2163,16 @@ struct redisServer {
 	 */
     time_t repl_no_slaves_since;    /* We have no slaves since that time.
                                        Only valid if server.slaves len is 0. */
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为0
+	 */
     int repl_min_slaves_to_write;   /* Min number of slaves to write. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为10
+	 */
     int repl_min_slaves_max_lag;    /* Max lag of <count> slaves to write. */
     int repl_good_slaves_count;     /* Number of slaves with lag <= max_lag. */
 
@@ -2056,6 +2188,11 @@ struct redisServer {
 	 */
     int repl_diskless_load;         /* Slave parse RDB directly from the socket.
                                      * see REPL_DISKLESS_LOAD_* enum */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为5
+	 */
     int repl_diskless_sync_delay;   /* Delay to start a diskless repl BGSAVE. */
 
     /* Replication (slave) */
@@ -2082,6 +2219,11 @@ struct redisServer {
 	 * 赋值为6379
 	 */
     int masterport;                 /* Port of master */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为60
+	 */
     int repl_timeout;               /* Timeout after N seconds of master idle */
 
 	/**
@@ -2160,6 +2302,11 @@ struct redisServer {
 	 * 赋值为0
 	 */
     int repl_disable_tcp_nodelay;   /* Disable TCP_NODELAY after SYNC? */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为100
+	 */
     int slave_priority;             /* Reported in INFO and used by Sentinel. */
 
 	/**
@@ -2167,6 +2314,11 @@ struct redisServer {
 	 * 赋值为1
 	 */
     int replica_announced;          /* If true, replica is announced by Sentinel */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为0
+	 */
     int slave_announce_port;        /* Give the master this listening port. */
 
 	/**
@@ -2197,8 +2349,18 @@ struct redisServer {
     /* Synchronous replication. */
     list *clients_waiting_acks;         /* Clients waiting in WAIT command. */
     int get_ack_from_slaves;            /* If true we send REPLCONF GETACK. */
+
     /* Limits */
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为10000
+	 */
     unsigned int maxclients;            /* Max number of simultaneous clients */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为0
+	 */
     unsigned long long maxmemory;   /* Max number of memory bytes to use */
 
 	/**
@@ -2206,10 +2368,35 @@ struct redisServer {
 	 * 赋值为MAXMEMORY_NO_EVICTION枚举值7<<8
 	 */
     int maxmemory_policy;           /* Policy for key eviction */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为5
+	 */
     int maxmemory_samples;          /* Precision of random sampling */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为10
+	 */
     int maxmemory_eviction_tenacity;/* Aggressiveness of eviction processing */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为10
+	 */
     int lfu_log_factor;             /* LFU logarithmic counter factor. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为1
+	 */
     int lfu_decay_time;             /* LFU counter decay factor. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为512M
+	 */
     long long proto_max_bulk_len;   /* Protocol bulk length maximum size. */
     int oom_score_adj_base;         /* Base oom_score_adj value, as observed on startup */
 
@@ -2247,6 +2434,11 @@ struct redisServer {
     list *ready_keys;        /* List of readyList structures for BLPOP & co */
     /* Client side caching. */
     unsigned int tracking_clients;  /* # of clients with tracking enabled.*/
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为1000000
+	 */
     size_t tracking_table_max_keys; /* Max number of keys in tracking table. */
     /* Sort parameters - qsort_r() is only available under BSD so we
      * have to take this state global, in order to pass it to sortCompare() */
@@ -2254,17 +2446,67 @@ struct redisServer {
     int sort_alpha;
     int sort_bypattern;
     int sort_store;
+
     /* Zip structure config, see redis.conf for more information  */
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为512
+	 */
     size_t hash_max_ziplist_entries;
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为64
+	 */
     size_t hash_max_ziplist_value;
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为512
+	 */
     size_t set_max_intset_entries;
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为128
+	 */
     size_t zset_max_ziplist_entries;
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为64
+	 */
     size_t zset_max_ziplist_value;
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为3000
+	 */
     size_t hll_sparse_max_bytes;
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为4096
+	 */
     size_t stream_node_max_bytes;
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为100
+	 */
     long long stream_node_max_entries;
+
     /* List parameters */
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为-2
+	 */
     int list_max_ziplist_size;
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为0
+	 */
     int list_compress_depth;
 
     /* time cache */
@@ -2322,6 +2564,11 @@ struct redisServer {
 	 * 赋值为0
 	 */
     int cluster_enabled;      /* Is cluster enabled? */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为15000
+	 */
     mstime_t cluster_node_timeout; /* Cluster node timeout. */
 
 	/**
@@ -2330,6 +2577,11 @@ struct redisServer {
 	 */
     char *cluster_configfile; /* Cluster auto-generated config file name. */
     struct clusterState *cluster;  /* State of the cluster */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为1
+	 */
     int cluster_migration_barrier; /* Cluster replicas migration barrier. */
 
 	/**
@@ -2337,6 +2589,11 @@ struct redisServer {
 	 * 赋值为1
 	 */
     int cluster_allow_replica_migration; /* Automatic replica migrations to orphaned masters and from empty masters */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为10
+	 */
     int cluster_slave_validity_factor; /* Slave max data age for failover. */
 
 	/**
@@ -2358,8 +2615,23 @@ struct redisServer {
 	 * 赋值为NULL
 	 */
     char *cluster_announce_ip;  /* IP address to announce on cluster bus. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为0
+	 */
     int cluster_announce_port;     /* base port to announce on cluster bus. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为0
+	 */
     int cluster_announce_tls_port; /* TLS port to announce on cluster bus. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为0
+	 */
     int cluster_announce_bus_port; /* bus port to announce on cluster bus. */
 
 	/**
@@ -2385,6 +2657,11 @@ struct redisServer {
     char* lua_cur_script; /* SHA1 of the script currently running, or NULL */
     dict *lua_scripts;         /* A dictionary of SHA1 -> Lua scripts */
     unsigned long long lua_scripts_mem;  /* Cached scripts' memory + oh */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为5000
+	 */
     mstime_t lua_time_limit;  /* Script timeout in milliseconds */
     monotime lua_time_start;  /* monotonic timer to detect timed-out script */
     mstime_t lua_time_snapshot; /* Snapshot of mstime when script is started */
@@ -2436,7 +2713,12 @@ struct redisServer {
 	 * 赋值为0
 	 */
     int lazyfree_lazy_user_flush;
+
     /* Latency monitor */
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为0
+	 */
     long long latency_monitor_threshold;
     dict *latency_events;
 
@@ -2446,6 +2728,11 @@ struct redisServer {
 	 * 赋值为""空字符串
 	 */
     char *acl_filename;           /* ACL Users file. NULL if not configured. */
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为128
+	 */
     unsigned long acllog_max_len; /* Maximum length of the ACL LOG list. */
 
 	/**
@@ -2470,10 +2757,47 @@ struct redisServer {
     int watchdog_period;  /* Software watchdog period in ms. 0 = off */
     /* System hardware info */
     size_t system_memory_size;  /* Total memory in system as reported by OS */
+
     /* TLS Configuration */
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为0
+	 */
     int tls_cluster;
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为0
+	 */
     int tls_replication;
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * 赋值为TLS_CLIENT_AUTH_YES枚举值
+	 */
     int tls_auth_clients;
+
+	/**
+	 * 赋值于server.c::main->initServerConfig->initConfigValues
+	 * <ul>对redisTLSContextConfig结构体成员进行赋值
+	 *   <li>session_cache_size赋值为20k</li>
+	 *   <li>session_cache_timeout赋值为300</li>
+	 *   <li>prefer_server_ciphers赋值为0</li>
+	 *   <li>session_caching赋值为1</li>
+	 *   <li>cert_file赋值为NULL</li>
+	 *   <li>key_file赋值为NULL</li>
+	 *   <li>key_file_pass赋值为NULL</li>
+	 *   <li>client_cert_file赋值为NULL</li>
+	 *   <li>client_key_file赋值为NULL</li>
+	 *   <li>client_key_file_pass赋值为NULL</li>
+	 *   <li>dh_params_file赋值为NULL</li>
+	 *   <li>ca_cert_file赋值为NULL</li>
+	 *   <li>ca_cert_dir赋值为NULL</li>
+	 *   <li>protocols赋值为NULL</li>
+	 *   <li>ciphers赋值为NULL</li>
+	 *   <li>ciphersuites赋值为NULL</li>
+	 * </ul>
+	 */
     redisTLSContextConfig tls_ctx_config;
 
     /* cpu affinity */

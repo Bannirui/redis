@@ -3576,6 +3576,10 @@ struct rewriteConfigState; /* Forward declaration to export API. */
 void rewriteConfigRewriteLine(struct rewriteConfigState *state, const char *option, sds line, int force);
 void rewriteConfigMarkAsProcessed(struct rewriteConfigState *state, const char *option);
 int rewriteConfig(char *path, int force_all);
+
+/**
+ * 这个函数比较有意思 体现了封装和多态的编程思想
+ */
 void initConfigValues();
 
 /* db.c -- Keyspace access API */

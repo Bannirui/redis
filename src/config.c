@@ -151,6 +151,7 @@ int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT] = { 0, 200, 800 };
 /* Configuration values that require no special handling to set, get, load or
  * rewrite. */
 typedef struct boolConfigData {
+	// 要给redisServer中赋值的成员地址
     int *config; /* The pointer to the server config this value is stored in */
     const int default_value; /* The default value of the config on rewrite */
     int (*is_valid_fn)(int val, const char **err); /* Optional function to check validity of new value (generic doc above) */
@@ -218,6 +219,7 @@ typedef struct numericConfigData {
     int (*update_fn)(long long val, long long prev, const char **err); /* Optional function to apply new value at runtime (generic doc above) */
 } numericConfigData;
 
+// union共用内存布局 实现多态的关键
 typedef union typeData {
     boolConfigData yesno;
     stringConfigData string;
@@ -226,6 +228,7 @@ typedef union typeData {
     numericConfigData numeric;
 } typeData;
 
+// 实例的方法 函数指针 真正实现后面创建实例的时候指定 高级语言的getter/setter
 typedef struct typeInterface {
     /* Called on server start, to init the server with default value */
     void (*init)(typeData data);
@@ -242,7 +245,9 @@ typedef struct standardConfig {
     const char *name; /* The user visible name of this config */
     const char *alias; /* An alias that can also be used for this config */
     const unsigned int flags; /* Flags for this specific config */
+	// 为data提供了对应的api 即多态实例的行为
     typeInterface interface; /* The function pointers that define the type interface */
+	// typeData是union 实现多态
     typeData data; /* The type specific data exposed used by the interface */
 } standardConfig;
 
@@ -543,6 +548,7 @@ static int updateOOMScoreAdjValues(sds *args, const char **err, int apply) {
  */
 void initConfigValues() {
     for (standardConfig *config = configs; config->name != NULL; config++) {
+	    // 实现多态调用
         config->interface.init(config->data);
     }
 }
@@ -1934,6 +1940,7 @@ static char loadbuf[LOADBUF_SIZE];
  */
 
 /* Bool Configs */
+// 给redisServer中成员赋值
 static void boolConfigInit(typeData data) {
     *data.yesno.config = data.yesno.default_value;
 }
@@ -1963,11 +1970,19 @@ static void boolConfigRewrite(typeData data, const char *name, struct rewriteCon
     rewriteConfigYesNoOption(state, name,*(data.yesno.config), data.yesno.default_value);
 }
 
+/**
+ * 宏定义函数初始化standardConfig结构体
+ */
 #define createBoolConfig(name, alias, flags, config_addr, default, is_valid, update) { \
+    /* standardConfig中name alias flags这3个成员赋值 */ \
     embedCommonConfig(name, alias, flags) \
+    /* 数据实例的方法 对standardConfig中interface成员赋值 */ \
     embedConfigInterface(boolConfigInit, boolConfigSet, boolConfigGet, boolConfigRewrite) \
-    .data.yesno = { \
+    /* 数据实例 对standardConfig中data成员赋值 */ \
+    .data.yesno = {                                                                    \
+	    /* redisServer要赋值的成员地址 */ \
         .config = &(config_addr), \
+	    /* 要给redisServer成员赋的值 */ \
         .default_value = (default), \
         .is_valid_fn = (is_valid), \
         .update_fn = (update), \

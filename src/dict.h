@@ -45,6 +45,12 @@
 #define DICT_ERR 1 // hash表操作码-失败
 
 /* Unused arguments generate annoying warnings... */
+/**
+ * 函数原型中设计了n个形式参数 函数体中只用了m(m<n)
+ * 老编译器可能存在的warning行为 提示用户存在已经声明的变量未使用
+ * 我使用的gcc编译器是13.x版本 不存在这个问题
+ * 因此这个宏的目的就是消除编译器的这种warning
+ */
 #define DICT_NOTUSED(V) ((void) V)
 
 // 哈希表的节点 存储k-v键值对
@@ -78,11 +84,30 @@ typedef struct dictType {
  * implement incremental rehashing, for the old to the new table. */
 // 哈希表
 typedef struct dictht {
-    // hash表的指针数组 指向hash节点的数组首地址
+    /**
+     * hash表的数组
+     * table成员类型是指针变量 这个指针地址存储的数据类型又是dictEntry*
+     * dictEntry*又是一个指针变量 这个指针地址存储的数据类型是dictEntry
+     * 即table是一个数组 每个数组元素存放的是一个单向链表
+     */
     dictEntry **table;
-    unsigned long size; // hash数组大小 桶的数量
-    unsigned long sizemask; // hash数组长度掩码=size-1
-    unsigned long used; // hash表节点的数量 有多少个键值对
+	/**
+	 * hash表的大小 即hash表数组长度 可以容纳多少个hash桶
+	 */
+    unsigned long size;
+	/**
+	 * sizemask=size-1
+	 * 纯粹的冗余成员
+	 * 在hash数组长度是2的幂次方前提之下
+	 * 计算key所在hash桶的脚标索引idx = hash(key) & (size-1)
+	 *                            = hash(key) & sizemask
+	 */
+    unsigned long sizemask;
+	/**
+	 * 键值对计数
+	 * 统计hash表中存储了多少个键值对的entry节点
+	 */
+    unsigned long used;
 } dictht;
 
 /**
@@ -95,20 +120,49 @@ typedef struct dictht {
  */
 typedef struct dict {
     dictType *type; // 字典的类型指针
-    void *privdata; // 私有数据指针
-    // 2个hash表 用于渐进式rehash
-    dictht ht[2];
-    // rehash下一个要迁移的桶索引 不进行rehash时为-1
-    long rehashidx; /* rehashing not in progress if rehashidx == -1 */
 	/**
-	 * 暂停rehash
-	 * 重入式的模式 在安全迭代器模式中要暂停rehash
+	 * 这个成员应该仅仅算是预留的一个空能扩展点
+	 * 目前而言还没看到实际的用处
 	 * <ul>
-	 *   <li>>0 标识rehash是暂停的 安全的迭代需要rehash是暂停状态</li>
-	 *   <li>==0 初始状态</li>
-	 *   <li><0 标识rehash异常</li>
+	 *   <li>在keyCompare函数接口中声明了 看是看了整个源码中xxxKeyCompare的实现这个成员都使用了 DICT_NOTUSED这个宏定义 也就意味着在privdata在keyCompare函数中是没有使用的</li>
 	 * </ul>
 	 */
+    void *privdata;
+    // 2个hash表 用于渐进式rehash
+    dictht ht[2];
+
+	/**
+	 * 标识dict的rehash状态
+	 * <ul>
+	 *   <li>-1 标识dict没有处于rehash</li>
+	 *   <li>另一种情况只能是unsigned 标识的是dict在rehash 并且要将[0]号表的对应脚标的hash桶迁移到[1]号表上去</li>
+	 * </ul>
+	 */
+    long rehashidx; /* rehashing not in progress if rehashidx == -1 */
+
+	 /**
+	  * 用于状态标识 rehash暂停状态
+	  * 为什么需要暂停rehash呢 迭代器模式提供了一种轮询数据的方式 但是dict的设计出于对扩容之后数据离散重hash的性能设计 用了2张hash表
+	  * 以如下场景为例
+	  *   dict处于rehash中 外部通过接口查看数据 在整个迭代过程中rehash都没有结束掉
+	  *   轮询到了[1]号表x脚标 即意味着[0]号表和[1]号表的[0...x)都已经轮询过了
+	  *   但是此时rehash的脚标为[0]号表的m 恰好这个m被rehash到了[1]号表的y(y>x)
+	  *   那么就会导致在轮询过程中[0]号表hash桶的数据被访问了2次
+	  * 因此为了设计出安全的迭代模式 源码给出了两种模式
+	  * <ul>
+	  *   <li>普通的迭代器</li>
+	  *   <li>安全的迭代器</li>
+	  * </ul>
+	  * 为了上述两种模式的区别 设计了pauserehash这个成员用于标识和控制
+	  * <ul>
+	  *   <li>0 正常状态 这个正常状态又可以根据是否在rehash细分出2种状态 因为有2中状态 所以要配合rehashidx配合使用<ul>
+	  *     <li>dict没有在rehash</li>
+	  *     <li>dict在rehash</li>
+	  *   </ul></li>
+	  *   <li>正数 标识rehash是暂停的状态</li>
+	  *   <li>负数 标识rehash异常</li>
+	  * </ul>
+	  */
     int16_t pauserehash; /* If >0 rehashing is paused (<0 indicates coding error) */
 } dict;
 
@@ -198,7 +252,9 @@ typedef void (dictScanBucketFunction)(void *privdata, dictEntry **bucketref);
 #endif
 
 /* API */
+// dict实例化
 dict *dictCreate(dictType *type, void *privDataPtr);
+// hash表扩容
 int dictExpand(dict *d, unsigned long size);
 int dictTryExpand(dict *d, unsigned long size);
 int dictAdd(dict *d, void *key, void *val);

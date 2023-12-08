@@ -106,42 +106,48 @@ static void _dictReset(dictht *ht)
 
 /* Create a new hash table */
 /**
- * 创建空字典实例
- * 字典里面的hash表是空的
- * @param type 用来填充dict实例的type字段
- * @param privDataPtr 用来填充dict实例的privdata字段
- * @return
+ * dict实例化
+ * @param type        用来赋值dict实例的type成员 多态函数接口
+ * @param privDataPtr 用来赋值privdata成员
+ *                    <ul>privdata在源码中的作用应该仅仅是设计预留了功能扩展点
+ *                      <li>在keyCompare函数接口中声明了形参 但是函数实现中没有使用</li>
+ *                    </ul>
  */
 dict *dictCreate(dictType *type,
         void *privDataPtr)
 {
     // 分配字典内存 算上填充字节 总共96 bytes
     dict *d = zmalloc(sizeof(*d));
-    // 初始化字典
+    // 初始化dict
     _dictInit(d,type,privDataPtr);
     return d;
 }
 
-/* Initialize the hash table */
-// 字典初始化
-// 字典里面的hash表是空的
-// @param d 要初始化的dict实例
-// @param type 用来填充dict实例的type字段
-// @param privDataPtr 用来填充dict实例的privdata字段
+/**
+ * dict实例成员初始化
+ */
 int _dictInit(dict *d, dictType *type,
         void *privDataPtr)
 {
-    // 初始化0号hash表 hash表是空的
+    /**
+     * UDT成员初始化
+     * <ul>
+     *   <li>初始化2张空的hash表</li>
+     *   <li>多态函数接口</li>
+     * </ul>
+     */
     _dictReset(&d->ht[0]);
-    // 初始化1号hash表 hash表是空的
     _dictReset(&d->ht[1]);
-    // 字典类型
     d->type = type;
-    // 字典私有数据
     d->privdata = privDataPtr;
-    // 标识当前状态没有处在rehash中
+	/**
+	 * rehash状态初始化 -1标识没进行rehash
+	 */
     d->rehashidx = -1;
-    // 标识当前状态没有处在rehash中
+
+	/**
+	 * rehash暂停状态初始化 0标识初始状态
+	 */
     d->pauserehash = 0;
     return DICT_OK;
 }
@@ -170,32 +176,68 @@ int dictResize(dict *d)
 //                      目的在于函数的返回值标识的是统一的失败\成功 没有细分失败的详情 这样可以知道如果扩容失败了 是否是因为内存开辟导致的
 // @return 操作码 0-成功
 //               1-失败
+/**
+ *
+ * @param size          hash表数组期待扩容到多长
+ * @param malloc_failed zmalloc的OOM异常标识
+ * @return              <ul>请求操作状态
+ *                        <li>0 标识扩容成功</li>
+ *                        <li>非0 标识扩容失败</li>
+ *                      </ul>
+ */
 int _dictExpand(dict *d, unsigned long size, int* malloc_failed)
 {
+    /**
+     * 取决于调用方是否要自行处理zmalloc的OOM
+     * 初始化内存 防止污染
+     */
     if (malloc_failed) *malloc_failed = 0;
 
     /* the size is invalid if it is smaller than the number of
      * elements already inside the hash table */
-    // 扩容的大小不满足当前使用
+	/**
+	 * 扩容前置校验
+	 * <ul>
+	 *   <li>首先dict要是已经在rehash中了 上一次的hash桶还没迁移完 就不能再出发扩容</li>
+	 *   <li>其次 要检验期待扩容的大小是否合理 扩容是因为当前数组的容量使用达到了某一阈值 也就是扩容时机问题 dict中hash表的数据结构是数组+链表 极致情况下 如果用空间换时间 没有出现hash冲突的时候 hash表退化成数组 那么数组的最小长度就是键值对数量
+	 *       那么一次扩容被触发 最优的扩容后长度=min(比size的最小的2的幂次方, >=键值对数量)
+	 *   </li>
+	 * </ul>
+	 * // TODO: 2023/12/8 扩容时机是什么 还没看到
+	 */
     if (dictIsRehashing(d) || d->ht[0].used > size)
         return DICT_ERR;
 
+	// 扩容之后的新表
     dictht n; /* the new hash table */
-    // 保证扩容后大小是2的幂次方 这样就可以通过位运算计算key的hash桶脚标=hash&(len-1)
+    // 保证扩容后数组长度是2的幂次方 这样就可以通过位运算计算key的hash桶脚标=hash&(len-1)
     unsigned long realsize = _dictNextPower(size);
 
     /* Detect overflows */
+	/**
+	 * 经典的溢出检查
+	 * <ul>
+	 *   <li>其一要校验的是上面函数2倍计算出来的结果有没有溢出 也就是realsize<size的作用</li>
+	 *   <li>其二是防御性的校验 因为平台上实际申请内存malloc系列的参数类型是sizet 本质也是unsigned long类型
+	 *       此时已经数组长度realsize 数组元素大小是sizeof(dictEntry*) 那么要给这个数组分配的空间(byte)就是二者乘积
+	 *       这个内存容量的表达是否溢出前置到这个地方校验一下
+	 *   </li>
+	 * </ul>
+	 */
     if (realsize < size || realsize * sizeof(dictEntry*) < realsize)
         return DICT_ERR;
 
     /* Rehashing to the same table size is not useful. */
+	// 依然是校验
     if (realsize == d->ht[0].size) return DICT_ERR;
 
     /* Allocate the new hash table and initialize all pointers to NULL */
-    // 新表
-    n.size = realsize; // dictht字段size
-    n.sizemask = realsize-1; // dictht字段sizemask
+    // 初始化hash表成员
+    n.size = realsize;
+    n.sizemask = realsize-1;
+	// 根据实参设定 决定处理OOM的时机
     if (malloc_failed) {
+	    // 太try了
         n.table = ztrycalloc(realsize*sizeof(dictEntry*));
         *malloc_failed = n.table == NULL;
         if (*malloc_failed)
@@ -203,11 +245,18 @@ int _dictExpand(dict *d, unsigned long size, int* malloc_failed)
     } else
         n.table = zcalloc(realsize*sizeof(dictEntry*));
 
-    n.used = 0; // dcitht字段used
+    n.used = 0;
 
     /* Is this the first initialization? If so it's not really a rehashing
      * we just set the first hash table so that it can accept keys. */
-    if (d->ht[0].table == NULL) { // 整个dict字典刚初始化好hash表
+	/**
+	 * 扩容的函数暴露给了外面 那么触发扩容的时机就起码有2处
+	 * <ul>
+	 *   <li></li>
+	 *   <li></li>
+	 * </ul>
+	 */
+    if (d->ht[0].table == NULL) {
         d->ht[0] = n;
         return DICT_OK;
     }
@@ -224,12 +273,25 @@ int _dictExpand(dict *d, unsigned long size, int* malloc_failed)
 // @param d 要扩容的dict实例
 // @param size 扩容到多大
 // @return 操作标识符
+/**
+ * hash表扩容 本质就是数组长度的增加
+ * zmalloc涉及OOM异常交由zmalloc机制处理
+ * @param size 期待将数组扩容到多长
+ *             期待是一回事 实际扩容结果是另一回事 源码为了将来使用位元算计算key落在的数组的hash桶脚标 需要确保数组长度是2的幂次方
+ *             因此希望数组长度是x 实际会计算得出y(y是2的幂次方 y>=2的最小值)
+ * @return
+ */
 int dictExpand(dict *d, unsigned long size) {
     return _dictExpand(d, size, NULL);
 }
 
 /* return DICT_ERR if expand failed due to memory allocation failure */
+/**
+ * hash表扩容
+ * 跟dictExpand的实现几乎一样 唯一区别就是zmalloc涉及OOM异常上抛过来交由这个函数自己处理
+ */
 int dictTryExpand(dict *d, unsigned long size) {
+    // 用于接收zmalloc的OOM异常标识
     int malloc_failed;
     _dictExpand(d, size, &malloc_failed);
     return malloc_failed? DICT_ERR : DICT_OK;
@@ -1160,12 +1222,37 @@ static int _dictExpandIfNeeded(dict *d)
 }
 
 /* Our hash table capability is a power of two */
-// >=size的最小2的幂次方
+/**
+ *  找到>=size的最小的2的幂次方
+ *  将hash表数组长度固化为2的幂次方 方便位元算实现key的脚标计算
+ *  最新分支的源码已经更新了计算方式 计算2被就是左移位运算
+ *  但凡涉及到运算 就要考虑溢出问题
+ *  <ul>尤其是轮询条件的运算
+ *    <li>轮询过程中的溢出在函数内部就可以进行检查</li>
+ *    <li>结果的溢出检查<ul>
+ *      <li>既可以在函数内部return之前检查完再return</li>
+ *      <li>也可以在调用方拿到函数结果再检查</li>
+ *    </ul></li>
+ *  </ul>
+ *  正常工程设计上肯定是将结果的检查放在调用方的
+ *  <ul>
+ *    <li>一方面符合最少知道原则 每个函数只关注在自己的业务领域</li>
+ *    <li>其次 一旦将结果的校验放在函数内部 就意味着要继而关注如果发生溢出的处理机制 破坏了设计层次</li>
+ *  </ul>
+ */
 static unsigned long _dictNextPower(unsigned long size)
 {
     unsigned long i = DICT_HT_INITIAL_SIZE;
-
+	/**
+	 * 为什么加上这么个分支
+	 * 我的理解是从数学角度来讲可以去掉
+	 * 但是考虑到实际应用场景的话 这个分支是在帮助提升内存使用率 减少不必要的内存空间浪费
+	 * 这个if分支的判断准绳是多大 这个肯定是没有标准的 源码采用long的最大值 当前可以换成int的最大值
+	 * long型正数表达的大小(2^(64-1)-1 long型64bit 高位0标识正数 低63位均是1)(byte)已经很大了 如果在此之上的空间还继续采取2被扩容方式 可能将会有很大的空间在未来并用不上
+	 */
+    // TODO: 2023/12/8 如果步进值是1的话怎么保证数组长度是2的幂次方呢 计算key的hash桶脚标
     if (size >= LONG_MAX) return LONG_MAX + 1LU;
+	// 在最新的分支源码中乘法已经更新成了位运算
     while(1) {
         if (i >= size)
             return i;

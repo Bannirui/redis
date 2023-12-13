@@ -58,12 +58,44 @@
 // key可以是void*指针类型 相当于Java的Object
 typedef struct dictEntry {
     void *key; // 节点的key
+	/**
+	 * 这个键值对的值设计成union很巧妙
+	 * <ul>
+	 *   <li>从数据类型的角度来讲这样的设计丰富了redis的dict支持的值的类型
+	 *     <ul>
+	 *       <li>既支持指针类型的数据</li>
+	 *       <li>又支持非指针类型的数据
+	 *         <ul>
+	 *           <li>unsigned 64位</li>
+	 *           <li>signed 64位</li>
+	 *           <li>double</li>
+	 *         </ul>
+	 *       </li>
+	 *     </ul>
+	 *   </li>
+	 *   <li>从内存占用角度来说 普遍64位系统 指针类型占8byte 上述非指针类型都是64位也是8byte 空间占用是一样的</li>
+	 * </ul>
+	 * 那为什么要支持值是非指针类型的呢
+	 * 我的猜想是为了减少以后使用过程中的解引用操作(尤其是频繁地get数字加减乘除之后再set回去)
+	 * 但是因为v的类型是union的 就注定代码复杂度立马倍数级上来 需要对u64 s64和double的3种类型单独定义get和set实现
+	 * <ul>源码通过dictSetVal宏定义解决value类型赋值指针类型的数据
+	 *   <li>涉及深拷贝时候 客户端定义valDup的实现 value拷贝的时候回调</li>
+	 *   <li>浅拷贝的时候直接赋值即可</li>
+	 * </ul>
+	 * 至于数字类型的成员u64 s64或者d就需要客户端根据需要分别调用
+	 * <ul>
+	 *   <li>dictSetSignedIntegerVal</li>
+	 *   <li>dictSetUnsignedIntegerVal</li>
+	 *   <li>dictSetDoubleVal</li>
+	 * </ul>
+	 */
+	// TODO: 2023/12/13 为什么不直接设计成void* 而要考虑数字
     union {
         void *val;
         uint64_t u64;
         int64_t s64;
         double d;
-    } v; // 节点的v 可以是指针\u64整数\int64整数\浮点数
+    } v;
     struct dictEntry *next; // 下一个节点 相当于单链表
 } dictEntry;
 
@@ -73,11 +105,27 @@ typedef struct dictEntry {
 typedef struct dictType {
     uint64_t (*hashFunction)(const void *key); // 键的hash函数
     void *(*keyDup)(void *privdata, const void *key); // 复制键的函数
-    void *(*valDup)(void *privdata, const void *obj); // 复制值的函数
+    /**
+     * <ul>
+     *   <li>添加键值对的时候用到 value是指针类型的时候用自定义的valDup函数赋值</li>
+     * </ul>
+     */
+	void *(*valDup)(void *privdata, const void *obj);
     int (*keyCompare)(void *privdata, const void *key1, const void *key2); // 键的比较函数
     void (*keyDestructor)(void *privdata, void *key); // 键的销毁函数
     void (*valDestructor)(void *privdata, void *obj); // 值的销毁函数
-    int (*expandAllowed)(size_t moreMem, double usedRatio); // 根据扩容后的数组的内存和负载因子判断是否可以扩容
+
+	/**
+	 * 为什么需要这个函数
+	 * 在考察是否需要扩容的时候 可能需要扩容很大的一个空间 那么将来在内存分配的时候可能会因为OOM而失败
+	 * 这个函数可以不定义的 也就是将内存大小的合理性延迟到内存分配的时候裁决
+	 * 当然内存分配函数也就是malloc系列调用涉及内核态切换 涉及性能开销
+	 * 因此可以将内存申请的合理性前置化 在用户层完成
+	 * @param moreMem   要申请的内存大小
+	 * @param usedRatio 扩容前的内存使用比率=键值对数量/数组长度
+	 */
+	 // TODO: 2023/12/13 重点关注这个函数的实现 用什么样的方式判决要申请的内存是否合理
+    int (*expandAllowed)(size_t moreMem, double usedRatio);
 } dictType;
 
 /* This is our hash table structure. Every dictionary has two of this as we
@@ -125,8 +173,10 @@ typedef struct dict {
 	 * 目前而言还没看到实际的用处
 	 * <ul>
 	 *   <li>在keyCompare函数接口中声明了 看是看了整个源码中xxxKeyCompare的实现这个成员都使用了 DICT_NOTUSED这个宏定义 也就意味着在privdata在keyCompare函数中是没有使用的</li>
+	 *   <li>在valDup函数接口中声明了 在实现中也是`((void) x);`这样的语句 定义中没有使用privdata</li>
 	 * </ul>
 	 */
+	 // TODO: 2023/12/13 成员的作用
     void *privdata;
     // 2个hash表 用于渐进式rehash
     dictht ht[2];
@@ -177,8 +227,11 @@ typedef struct dict {
 typedef struct dictIterator {
     dict *d; // 指向字典指针
     long index; // 标识着哪些槽已经遍历过
-    // table 当前正在迭代的hash表 [0...1]
-    // safe 标识是否安全
+
+	/**
+	 * table 当前正在迭代的hash表 可能是[0]号表也可能是[1]号表
+	 * safe 标识是否安全
+	 */
     int table, safe;
     // entry 标识当前已经返回的节点
     // nextEntry 标识下一个节点
@@ -200,6 +253,21 @@ typedef void (dictScanBucketFunction)(void *privdata, dictEntry **bucketref);
     if ((d)->type->valDestructor) \
         (d)->type->valDestructor((d)->privdata, (entry)->v.val)
 
+/**
+ * dict中的键值对数据类型支持的很丰富 value支持
+ * <ul>
+ *   <li>指针类型</li>
+ *   <li>无符号整数</li>
+ *   <li>有符号整数</li>
+ *   <li>浮点数</li>
+ * </ul>
+ * 这个宏就是来赋值用的val的 也就是说只用来处理指针类型的数据
+ * 指针类型数据涉及深拷贝/浅拷贝 因此怎么复制交给调用方决定
+ * <ul>
+ *   <li>调用方指定了valDup函数 就用指定的函数进行拷贝</li>
+ *   <li>调用放没有指定 因为是指针类型 就直接赋值 比如客户端断定这个数据前拷贝足矣</li>
+ * </ul>
+ */
 #define dictSetVal(d, entry, _val_) do { \
     if ((d)->type->valDup) \
         (entry)->v.val = (d)->type->valDup((d)->privdata, _val_); \
@@ -207,12 +275,15 @@ typedef void (dictScanBucketFunction)(void *privdata, dictEntry **bucketref);
         (entry)->v.val = (_val_); \
 } while(0)
 
+// 支持键值对中的有符号整数
 #define dictSetSignedIntegerVal(entry, _val_) \
     do { (entry)->v.s64 = _val_; } while(0)
 
+// 支持键值对中的无符号整数
 #define dictSetUnsignedIntegerVal(entry, _val_) \
     do { (entry)->v.u64 = _val_; } while(0)
 
+// 支持键值对中的浮点数
 #define dictSetDoubleVal(entry, _val_) \
     do { (entry)->v.d = _val_; } while(0)
 
@@ -239,7 +310,9 @@ typedef void (dictScanBucketFunction)(void *privdata, dictEntry **bucketref);
 #define dictGetUnsignedIntegerVal(he) ((he)->v.u64)
 #define dictGetDoubleVal(he) ((he)->v.d)
 #define dictSlots(d) ((d)->ht[0].size+(d)->ht[1].size)
+// dict中存储了多少个键值对
 #define dictSize(d) ((d)->ht[0].used+(d)->ht[1].used)
+// 成员rehashidx是-1标识没有在rehash
 #define dictIsRehashing(d) ((d)->rehashidx != -1)
 #define dictPauseRehashing(d) (d)->pauserehash++
 #define dictResumeRehashing(d) (d)->pauserehash--
@@ -256,16 +329,35 @@ typedef void (dictScanBucketFunction)(void *privdata, dictEntry **bucketref);
 dict *dictCreate(dictType *type, void *privDataPtr);
 // hash表扩容
 int dictExpand(dict *d, unsigned long size);
+// hash表扩容
 int dictTryExpand(dict *d, unsigned long size);
+// 写入键值对
 int dictAdd(dict *d, void *key, void *val);
+// 开放了非指针类型的value设置
 dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing);
 dictEntry *dictAddOrFind(dict *d, void *key);
+// 新增/更新
 int dictReplace(dict *d, void *key, void *val);
+// 删除key
 int dictDelete(dict *d, const void *key);
+// 删除key 不释放内存
 dictEntry *dictUnlink(dict *ht, const void *key);
 void dictFreeUnlinkedEntry(dict *d, dictEntry *he);
+// 释放dict
 void dictRelease(dict *d);
+// 查找key
 dictEntry * dictFind(dict *d, const void *key);
+/**
+ * 键值对的value
+ * 这个函数仅仅针对的值类型是指针类型的
+ * 值类型很丰富 要去获取的话也要读取union中不同的成员
+ * <ul>
+ *   <li>void*指针类型</li>
+ *   <li>u64整数</li>
+ *   <li>s64整数</li>
+ *   <li>double浮点数</li>
+ * </ul>
+ */
 void *dictFetchValue(dict *d, const void *key);
 int dictResize(dict *d);
 dictIterator *dictGetIterator(dict *d);

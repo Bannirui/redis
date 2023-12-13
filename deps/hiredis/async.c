@@ -58,6 +58,10 @@ static unsigned int callbackHash(const void *key) {
 }
 
 static void *callbackValDup(void *privdata, const void *src) {
+    /**
+     * 这种写法唯一作用就是为了消除老版本编译器warning
+     * 假使一个函数声明n个形参 函数定义中只使用了m(m<n)个参数 那么编译器会warning
+     */
     ((void) privdata);
     redisCallback *dup;
 

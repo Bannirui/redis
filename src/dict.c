@@ -56,6 +56,12 @@
  * prevented: a hash table is still allowed to grow if the ratio between
  * the number of elements and the buckets > dict_force_resize_ratio. */
 static int dict_can_resize = 1;
+/**
+ * 扩容阈值
+ * 键值对数量/数组长度>5
+ * 从平均角度来讲 也就是说平均每个链表长度为5 超过了5就认为过长 就触发扩容
+ * 只要hash算法设计的足够好 就能够尽量保证每个链表都相对较短
+ */
 static unsigned int dict_force_resize_ratio = 5;
 
 /* -------------------------- private prototypes ---------------------------- */
@@ -154,32 +160,32 @@ int _dictInit(dict *d, dictType *type,
 
 /* Resize the table to the minimal size that contains all the elements,
  * but with the invariant of a USED/BUCKETS ratio near to <= 1 */
+/**
+ * hash表的扩容
+ * hash表每次扩容扩到多大 数组长度扩到当前键值对数量 并保证长度为2的幂次方
+ * 当前键值对数量的界定=min{4, 键值对实际数量}
+ */
 int dictResize(dict *d)
 {
     unsigned long minimal;
 
     if (!dict_can_resize || dictIsRehashing(d)) return DICT_ERR;
-    minimal = d->ht[0].used; // hash表中节点数量
+    minimal = d->ht[0].used;
     if (minimal < DICT_HT_INITIAL_SIZE)
         minimal = DICT_HT_INITIAL_SIZE;
-    // 扩容
     return dictExpand(d, minimal);
 }
 
 /* Expand or create the hash table,
  * when malloc_failed is non-NULL, it'll avoid panic if malloc fails (in which case it'll be set to 1).
  * Returns DICT_OK if expand was performed, and DICT_ERR if skipped. */
-// dict实例的hash表扩容
-// @param d 要扩容的dict实例
-// @param size 要扩容到多大(多少个byte)
-// @param malloc_failed 内存分配失败标识符 如果调用方传递了该指针 扩容实现内部申请内存失败了 就标识为1通知调用方
-//                      目的在于函数的返回值标识的是统一的失败\成功 没有细分失败的详情 这样可以知道如果扩容失败了 是否是因为内存开辟导致的
-// @return 操作码 0-成功
-//               1-失败
 /**
- *
  * @param size          hash表数组期待扩容到多长
  * @param malloc_failed zmalloc的OOM异常标识
+ *                      <ul>
+ *                        <li>没有传入指针变量 说明调用方肯定不关注OOM的异常</li>
+ *                        <li>传入了指针变量 说明调用方可能关注OOM异常 调用方可能想自行处理OOM</li>
+ *                      </ul>
  * @return              <ul>请求操作状态
  *                        <li>0 标识扩容成功</li>
  *                        <li>非0 标识扩容失败</li>
@@ -198,12 +204,12 @@ int _dictExpand(dict *d, unsigned long size, int* malloc_failed)
 	/**
 	 * 扩容前置校验
 	 * <ul>
-	 *   <li>首先dict要是已经在rehash中了 上一次的hash桶还没迁移完 就不能再出发扩容</li>
+	 *   <li>首先dict要是已经在rehash中了 上一次的hash桶还没迁移完 就不能再触发扩容</li>
 	 *   <li>其次 要检验期待扩容的大小是否合理 扩容是因为当前数组的容量使用达到了某一阈值 也就是扩容时机问题 dict中hash表的数据结构是数组+链表 极致情况下 如果用空间换时间 没有出现hash冲突的时候 hash表退化成数组 那么数组的最小长度就是键值对数量
 	 *       那么一次扩容被触发 最优的扩容后长度=min(比size的最小的2的幂次方, >=键值对数量)
 	 *   </li>
 	 * </ul>
-	 * // TODO: 2023/12/8 扩容时机是什么 还没看到
+	 * 扩容时机是发生在dictAdd中考察键值对数量是否过多 键值对数量/数组长度>5
 	 */
     if (dictIsRehashing(d) || d->ht[0].used > size)
         return DICT_ERR;
@@ -252,9 +258,10 @@ int _dictExpand(dict *d, unsigned long size, int* malloc_failed)
 	/**
 	 * 扩容的函数暴露给了外面 那么触发扩容的时机就起码有2处
 	 * <ul>
-	 *   <li></li>
-	 *   <li></li>
+	 *   <li>dict实例化之后还没put数据 就手动主动进行expand</li>
+	 *   <li>dict在put过程中触发了数组长度使用阈值 被动触发扩容</li>
 	 * </ul>
+	 * dict刚实例化完 直接把新表给[0]号就行
 	 */
     if (d->ht[0].table == NULL) {
         d->ht[0] = n;
@@ -262,24 +269,27 @@ int _dictExpand(dict *d, unsigned long size, int* malloc_failed)
     }
 
     /* Prepare a second hash table for incremental rehashing */
-    // 不是hash表的初始化场景 而是扩容->节点迁移的场景
+	/**
+	 * 因为hash表数组长度使用触发了扩容阈值
+	 * 新表给到[1]号表
+	 * 标记rehash标识
+	 */
     d->ht[1] = n;
-    d->rehashidx = 0; // 标识准备从老表的0号桶开始迁移
+    d->rehashidx = 0;
     return DICT_OK;
 }
 
 /* return DICT_ERR if expand was not performed */
-// hash表扩容
-// @param d 要扩容的dict实例
-// @param size 扩容到多大
-// @return 操作标识符
 /**
  * hash表扩容 本质就是数组长度的增加
- * zmalloc涉及OOM异常交由zmalloc机制处理
+ * zmalloc涉及OOM异常交由zmalloc机制处理 当前函数不单独处理OOM
  * @param size 期待将数组扩容到多长
  *             期待是一回事 实际扩容结果是另一回事 源码为了将来使用位元算计算key落在的数组的hash桶脚标 需要确保数组长度是2的幂次方
  *             因此希望数组长度是x 实际会计算得出y(y是2的幂次方 y>=2的最小值)
- * @return
+ * @return <ul>请求操作状态
+ *           <li>0 标识扩容成功</li>
+ *           <li>非0 标识扩容失败</li>
+ *         </ul>
  */
 int dictExpand(dict *d, unsigned long size) {
     return _dictExpand(d, size, NULL);
@@ -310,23 +320,63 @@ int dictTryExpand(dict *d, unsigned long size) {
 // @param n 迁移n个hash桶
 // @return 1 标识hash表还有节点待迁移
 //         0 标识hash表已经迁移完成
+/**
+ *
+ * @param d
+ * @param n 目标帮助迁移n个hash桶
+ * @return
+ */
 int dictRehash(dict *d, int n) {
-    // 最多遍历空桶的数量
+	/**
+	 * 数据质量的防御
+	 * <ul>
+	 *   <li>迁移1个桶的时候不存在这个担忧</li>
+	 *   <li>迁移n(n>1)个桶的时候 假使n个桶两两之间分布在hash表数组很离散的位置 即数组元素之间脚标间隔很远 就意味着当前线程遍历数组脚标可能数量很大 会耗时 对于当前线程而言 协助迁移hash桶只是分外之事 不是主线任务 所以要平衡迁移hash桶的时间</li>
+	 * </ul>
+	 * 鉴于这样的考量 就要给hash表数组的轮询设定阈值
+	 */
     int empty_visits = n*10; /* Max number of empty buckets to visit. */
+	// rehash状态校验
     if (!dictIsRehashing(d)) return 0;
 
-    // 计划迁移n个桶 现在目标还没完成 hash表中还有节点等待被迁移
+	/**
+	 * 当前线程rehash任务的停止边界
+	 * <ul>
+	 *   <li>迁移目标n个桶</li>
+	 *   <li>轮询的hash表脚标数量统计上限</li>
+	 *   <li>dict的[0]号表迁移结束</li>
+	 * </ul>
+	 */
     while(n-- && d->ht[0].used != 0) {
+	    /**
+	     * <ul>
+	     *   <li>de记录hash表数组中存放的单链表</li>
+	     *   <li>nextde记录单链表头</li>
+	     * </ul>
+	     */
         dictEntry *de, *nextde;
 
         /* Note that rehashidx can't overflow as we are sure there are more
          * elements because ht[0].used != 0 */
+		/**
+		 * 防止数组脚标溢出
+		 * rehashidx是标识的要迁移的hash桶 也就是数组脚标指向的数组元素 将来要通过arr[rehashidx]方式来获取数组元素的 防止溢出
+		 */
         assert(d->ht[0].size > (unsigned long)d->rehashidx);
+		/**
+		 * <ul>
+		 *   <li>一方面 跳过hash表数组中的空桶</li>
+		 *   <li>另一方面 统计总共遍历了多少个桶 考察是不是达到了遍历上限</li>
+		 * </ul>
+		 */
         while(d->ht[0].table[d->rehashidx] == NULL) {
             d->rehashidx++;
             if (--empty_visits == 0) return 1;
         }
-        // 该hash桶上的节点要迁移走
+        /**
+         * 不是空桶
+         * 准备把整条单链表迁移走 轮询单链表所有节点 依次迁移走
+         */
         de = d->ht[0].table[d->rehashidx];
         /* Move all the keys in this bucket from the old to the new hash HT */
         // de指向hash桶的链表头 遍历链表将节点逐个迁移到新表上
@@ -395,6 +445,10 @@ int dictRehashMilliseconds(dict *d, int ms) {
  * dictionary so that the hash table automatically migrates from H1 to H2
  * while it is actively used. */
 // 协助迁移1个hash桶
+/**
+ *
+ * @param d
+ */
 static void _dictRehashStep(dict *d) {
     // 没有迁移暂停
     // 在迭代器安全模式下会暂停rehash
@@ -406,15 +460,41 @@ static void _dictRehashStep(dict *d) {
 // @param 向哪个dict实例中添加键值对
 // @param [key, val]键值对 hash节点
 // @return 操作码 0-标识操作成功 1-标识操作失败
+/**
+ *
+ * @param d
+ * @param key
+ * @param val
+ * @return
+ */
 int dictAdd(dict *d, void *key, void *val)
 {
-    // 向字典的hash表添加了一个节点[key, null]
-    // 如果已经存在了key就向上返回添加失败
-    // 并不关注已经存在的key是谁
+	/**
+	 * 添加键值对节点
+	 * 可能会失败
+	 * <ul>
+	 *   <li>dict不允许重复key</li>
+	 *   <li>触发扩容 扩容失败</li>
+	 * </ul>
+	 */
     dictEntry *entry = dictAddRaw(d,key,NULL);
 
-    if (!entry) return DICT_ERR; // hash表中已经存在键值对 返回添加失败的标识
-    // 上面步骤向字典中添加的节点还没设置value值
+    if (!entry) return DICT_ERR;
+	/**
+	 * 这个地方就开始体现怎么应对多类型的value赋值问题了
+	 * <ul>键值对的value可以是
+	 *   <li>指针类型</li>
+	 *   <li>无符号整数</li>
+	 *   <li>有符号整数</li>
+	 *   <li>浮点数</li>
+	 * </ul>
+	 * 调用这个宏来应付不同的选择
+	 * 根据用户的valDup函数来处理value的赋值
+	 * <ul>
+	 *   <li>给定了valDup 就用这个函数处理指针类型的数据</li>
+	 *   <li>其他的数据类型是值类型的</li>
+	 * </ul>
+	 */
     dictSetVal(d, entry, val);
     return DICT_OK;
 }
@@ -437,23 +517,37 @@ int dictAdd(dict *d, void *key, void *val)
  *
  * If key was added, the hash entry is returned to be manipulated by the caller.
  */
-// 向字典d中添加一个节点
-// hash表中已经存在key了就返回null标识新建节点失败
-// 指定该节点的key value留着调用方设置
-// @param existing
-// @return null标识key已经存在key 不进行节点添加操作 并通过existing指针标识出已经存在的kv键值对节点
-//         非null标识新添加到hash表中的[key, null]半成品节点 所谓的半成品指的是entry节点只有key字段 没有value字段
+/**
+ * 这个函数存在的必要性是什么 也就是说为什么要同时提供dictAdd和dictAddRaw这两个API
+ * 我的理解还是因为键值对v类型设计union衍生出来的特性支持
+ * 因为想要键值对存储的类型丰富->将v的类型设计为union->因为v是union的意味着redis源码无法明确知晓用户到底想要把value设置成什么类型->因此在dictAdd基础指向额外提供这个方法给用户提供自定义设置value类型的入口
+ * 调用方在此基础上自己关注value怎么设置
+ * @param existing hash表不存在重复key key已经存在了就无法新增 用于存放重复的key
+ *                 至于为什么设计成dictEntry**类型的指针变量 因为键值对存储在hash表中的形式是数组+链表 每个链表节点的类型都是dictEntry*
+ *                 那么用户交互键值对节点最直接的类型就是dictEntry*
+ *                 所以这个地方existing类型相当于对dictEntry*的一个变量再取址一次 就是dictEntry**
+ * @return         写入失败就返回NULL
+ *                 写入成功就返回新增的键值对节点
+ */
 dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing)
 {
+    // key在hash表的脚标位置
     long index;
     dictEntry *entry;
+	// dict可能有1个表 可能有2个表 表示数据往哪个表上写
     dictht *ht;
     // 字典当前正在rehash 当前线程协助迁移一个桶
     if (dictIsRehashing(d)) _dictRehashStep(d);
 
     /* Get the index of the new element, or -1 if
      * the element already exists. */
-    // 字典d的hash表中存在key
+	/**
+	 * index -1表示key在dict中hash表数组脚标计算不出来
+	 * <ul>
+	 *   <li>key已经存在了 把存在的key返回出去 dict不允许重复key 调用方就去更新value值就完成了add新键值对的语义</li>
+	 *   <li>诸如扩容失败导致计算不出来key落在数组的位置</li>
+	 * </ul>
+	 */
     if ((index = _dictKeyIndex(d, key, dictHashKey(d,key), existing)) == -1)
         return NULL;
 
@@ -461,16 +555,25 @@ dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing)
      * Insert the element in top, with the assumption that in a database
      * system it is more likely that recently added entries are accessed
      * more frequently. */
-    // 字典正在rehash就用新表 没在rehash就用旧表
-    // 正在rehash中 也就意味着最终需要将旧标上所有hash桶里面的entry节点都迁移到新表上
-    // 就不要往旧表上写数据了 直接一步到位写到新表上
+	/**
+	 * 数据往哪儿写
+	 * <ul>
+	 *   <li>dict可能只有1个hash表</li>
+	 *   <li>可能有2个hash表</li>
+	 * </ul>
+	 * 取决于当前dict的状态 在rehash中就有2个表
+	 * 既然在rehash 就是处在把[0]号表元素往[1]号表迁移的过程中
+	 * 所以新增的数据就不要往[0]号表写了 然后再迁移
+	 * 直接一步到位 写到[1]号表上去
+	 */
     ht = dictIsRehashing(d) ? &d->ht[1] : &d->ht[0];
-    // 分配一个hash节点内存 大小为48 bytes
+	// 键值对 实例化 初始化
     entry = zmalloc(sizeof(*entry));
-    // 链表 头插法
+	// 经典的单链表头插法
     entry->next = ht->table[index];
     ht->table[index] = entry;
-    ht->used++; // hash表entry键值对节点计数
+    // 键值对计数
+    ht->used++;
 
     /* Set the hash entry fields. */
     // 设置节点的key
@@ -483,19 +586,22 @@ dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing)
  * Return 1 if the key was added from scratch, 0 if there was already an
  * element with such key and dictReplace() just performed a value update
  * operation. */
-// @param d 向字典d中新增[key, val]hash节点
-// @return 1标识新增 0标识更新
+/**
+ * 新增/更新
+ */
 int dictReplace(dict *d, void *key, void *val)
 {
     dictEntry *entry, *existing, auxentry;
 
     /* Try to add the element. If the key
      * does not exists dictAdd will succeed. */
-    // 向hash表中添加节点
+	/**
+	 * dict不重复key
+	 * 能新增就新增 有重复了就找到存在的key
+	 */
     entry = dictAddRaw(d,key,&existing);
-    // entry为null说明hash表中已经存在键key 存在的节点是existing 要要进行节点value的更新
-    // entry不为null说明hash表中原本不存在key
-    if (entry) { // 新增
+	// 新增key的情况
+    if (entry) {
         dictSetVal(d, entry, val);
         return 1;
     }
@@ -505,6 +611,7 @@ int dictReplace(dict *d, void *key, void *val)
      * as the previous one. In this context, think to reference counting,
      * you want to increment (set), and then decrement (free), and not the
      * reverse. */
+	// 重复key的情况 更新value
     auxentry = *existing;
     // hash表中已经存在节点existing 进行节点value的更新
     dictSetVal(d, existing, val);
@@ -519,13 +626,12 @@ int dictReplace(dict *d, void *key, void *val)
  * existing key is returned.)
  *
  * See dictAddRaw() for more information. */
-// 根据key是否存在情况 对key进行新增或者查询 新增的场景是[key, val]半成品 value字段还没设置留着给调用方进行设置value
-// @param d dict实例
-// @param key key
 dictEntry *dictAddOrFind(dict *d, void *key) {
     dictEntry *entry, *existing;
-    // dict中不存在key 新增一个entry节点 entry指向的是半成品 value留给调用方关注
-    // dict中已经存在了key entry为null existing指向的是已经存在的entry节点
+	/**
+	 * dict不重复key
+	 * 能新增就新增 不能新增就找到已经存在的key
+	 */
     entry = dictAddRaw(d,key,&existing);
     return entry ? entry : existing;
 }
@@ -533,37 +639,50 @@ dictEntry *dictAddOrFind(dict *d, void *key) {
 /* Search and remove an element. This is an helper function for
  * dictDelete() and dictUnlink(), please check the top comment
  * of those functions. */
-// 删除hash表中节点
-// @param nofree 0 标识回收内存
-//               1 标识不回收内存
+/**
+ * 从dict中移除key
+ * @param nofree 标识移除的键值对内存怎么处理
+ *               <ul>
+ *                 <li>0 释放键值对内存</li>
+ *                 <li>1 不需要释放键值对内存</li>
+ *               </ul>
+ * @return 被移除的键值对
+ */
 static dictEntry *dictGenericDelete(dict *d, const void *key, int nofree) {
+    /**
+     * h key的hash值
+     * idx key落在hash表数组的脚标位置
+     */
     uint64_t h, idx;
     dictEntry *he, *prevHe;
     int table;
 
-    // 空表 hash表还没初始化
+    // 空表的情况
     if (d->ht[0].used == 0 && d->ht[1].used == 0) return NULL;
 
-    if (dictIsRehashing(d)) _dictRehashStep(d); // hash表正在迁移 该线程就协助进行节点迁移
-    h = dictHashKey(d, key); // key的hash值
+    // 渐进式rehash的体现 hash表正在迁移 该线程就协助进行节点迁移
+    if (dictIsRehashing(d)) _dictRehashStep(d);
+    h = dictHashKey(d, key);
 
     for (table = 0; table <= 1; table++) {
-        idx = h & d->ht[table].sizemask; // hash%len 桶脚标
-        he = d->ht[table].table[idx]; // 单链表 链表头
+        idx = h & d->ht[table].sizemask;
+        he = d->ht[table].table[idx];
         prevHe = NULL;
         while(he) {
-            if (key==he->key || dictCompareKeys(d, key, he->key)) { // 找到了key
+            if (key==he->key || dictCompareKeys(d, key, he->key)) {
                 /* Unlink the element from the list */
                 if (prevHe)
                     prevHe->next = he->next; // 当前要删除的链表节点不是链表头
                 else
                     d->ht[table].table[idx] = he->next; // 当前要删除的链表节点是链表头
-                if (!nofree) { // 根据入参决定内存回收策略
+			    // 根据入参决定内存回收策略
+                if (!nofree) {
                     dictFreeKey(d, he);
                     dictFreeVal(d, he);
                     zfree(he);
                 }
-                d->ht[table].used--; // 键值对少了一个
+			    // 更新dict中的键值对计数 键值对少了一个
+                d->ht[table].used--;
                 return he;
             }
             prevHe = he;
@@ -576,8 +695,11 @@ static dictEntry *dictGenericDelete(dict *d, const void *key, int nofree) {
 
 /* Remove an element, returning DICT_OK on success or DICT_ERR if the
  * element was not found. */
-// 删除hash表中key的键值对 回收内存
+/**
+ * 删除key 释放被删除的键值对的内存
+ */
 int dictDelete(dict *ht, const void *key) {
+    // 删除key 释放被删除的键值对的内存
     return dictGenericDelete(ht,key,0) ? DICT_OK : DICT_ERR;
 }
 
@@ -602,13 +724,20 @@ int dictDelete(dict *ht, const void *key) {
  * // Do something with entry
  * dictFreeUnlinkedEntry(entry); // <- This does not need to lookup again.
  */
-// 删除hash表中key键值对 不回收内存
+/**
+ * 删除key 不释放被删除的键值对的内存
+ */
 dictEntry *dictUnlink(dict *ht, const void *key) {
+    // 从dict中移除key 不释放被移除的键值对的内存
     return dictGenericDelete(ht,key,1);
 }
 
 /* You need to call this function to really free the entry after a call
  * to dictUnlink(). It's safe to call this function with 'he' = NULL. */
+/**
+ * 跟dictUnlink配套使用的 将dict中移除的key进行内存释放回收
+ * 为啥要提供这样的API 直接提供一个dictDelete就行了
+ */
 void dictFreeUnlinkedEntry(dict *d, dictEntry *he) {
     if (he == NULL) return;
     dictFreeKey(d, he);
@@ -617,15 +746,33 @@ void dictFreeUnlinkedEntry(dict *d, dictEntry *he) {
 }
 
 /* Destroy an entire dictionary */
-// 删除整个hash表
+/**
+ * 释放dict
+ * 轮询dict中所有键值对节点逐个释放内存
+ * 继而释放dict的hash表引用
+ * 最后释放dict内存
+ * @param callback
+ */
 int _dictClear(dict *d, dictht *ht, void(callback)(void *)) {
     unsigned long i;
 
     /* Free all the elements */
-    // hash表所有槽位都要删除直到节点被删除光
+	// 轮询hash表中所有hash桶中的单链表 逐个释放内存
     for (i = 0; i < ht->size && ht->used > 0; i++) {
         dictEntry *he, *nextHe;
 
+		/**
+		 * 0xFFFF
+		 * 什么意思 为什么要回调
+		 * <ul>
+		 *   <li>0号脚标触发回调</li>
+		 *   <li>大于等于65536号脚标触发回调</li>
+		 * </ul>
+		 * 什么意思0号触发可以理解成销毁节点的开始
+		 * 如果数组长度<65536 只会被触发一次
+		 * 如果数组长度>=65536 那么除了[1...65535]脚标 后面将会一直触发回调
+		 */
+		 // TODO: 2023/12/13 回调的意义是什么
         if (callback && (i & 65535) == 0) callback(d->privdata);
 
         if ((he = ht->table[i]) == NULL) continue;
@@ -653,42 +800,45 @@ void dictRelease(dict *d)
     zfree(d);
 }
 
-// 根据key查询键值对entry节点
-// @param d dict实例
-// @param key key
-// @return 字典d中key对应的entry节点
+/**
+ * 查找key
+ */
 dictEntry *dictFind(dict *d, const void *key)
 {
     dictEntry *he;
     uint64_t h, idx, table;
 
-    // 字典为空
+    // 字典为空 没有键值对
     if (dictSize(d) == 0) return NULL; /* dict is empty */
     // 字典正在rehash状态 协助迁移1个hash桶
     if (dictIsRehashing(d)) _dictRehashStep(d);
     // key的hash值
     h = dictHashKey(d, key);
-    // 轮询字典里面的2张hash表
-    // 字典处于rehash的场景下才需要查询两张hash表
-    // 字典没有处于rehash的时候 只需要查询一张hash表
     for (table = 0; table <= 1; table++) {
-        // 数组长度len=2的幂次方前提下 hash%len == hash&(len-1)
-        idx = h & d->ht[table].sizemask; // 数组脚标
-        he = d->ht[table].table[idx]; // 链表头
-        // 单链表遍历直到找到key对应的节点
+        idx = h & d->ht[table].sizemask;
+        he = d->ht[table].table[idx];
         while(he) {
-            // 优先比较内存地址 其次使用自定义的比较函数
+		    // 找到了key
             if (key==he->key || dictCompareKeys(d, key, he->key))
                 return he;
             he = he->next;
         }
-        // 没有rehashing 说明数据只可能在旧表上 没有必要继续查新表
         if (!dictIsRehashing(d)) return NULL;
     }
     return NULL;
 }
 
-// 获取key对应的value
+/**
+ * 键值对的value
+ * 这个函数仅仅针对的值类型是指针类型的
+ * 值类型很丰富 要去获取的话也要读取union中不同的成员
+ * <ul>
+ *   <li>void*指针类型</li>
+ *   <li>u64整数</li>
+ *   <li>s64整数</li>
+ *   <li>double浮点数</li>
+ * </ul>
+ */
 void *dictFetchValue(dict *d, const void *key) {
     dictEntry *he;
     // 查询key的hash节点
@@ -734,9 +884,9 @@ long long dictFingerprint(dict *d) {
     return hash;
 }
 
-// 获取字典的非安全模式迭代器
-// @param d dict实例
-// @return 迭代器实例
+/**
+ *
+ */
 dictIterator *dictGetIterator(dict *d)
 {
     // 分配迭代器内存
@@ -1190,33 +1340,51 @@ unsigned long dictScan(dict *d,
  * type has expandAllowed member function. */
 static int dictTypeExpandAllowed(dict *d) {
     if (d->type->expandAllowed == NULL) return 1;
+	// 用户层判定是否可以扩容
     return d->type->expandAllowed(
                     _dictNextPower(d->ht[0].used + 1) * sizeof(dictEntry*),
                     (double)d->ht[0].used / d->ht[0].size);
 }
 
 /* Expand the hash table if needed */
-// 考察是否有扩容的需求
-// 需要扩容就进行hash表扩容操作
+/**
+ * 考察dict是否需要扩容 如果有扩容需求就触发扩容
+ * @return <ul>
+ *           <li>0标识需要扩容并且扩容成功</li>
+ *           <li>1标识不需要扩容或者扩容失败
+ *             <ul>
+ *               <li>可能因为不需要扩容</li>
+ *               <li>可能是需要扩容但是扩容失败了(申请新内存OOM)</li>
+ *             </ul>
+ *           </li>
+ *         </ul>
+ */
 static int _dictExpandIfNeeded(dict *d)
 {
     /* Incremental rehashing already in progress. Return. */
+	// 上一轮扩容还没结束(hash桶还没迁移完)
     if (dictIsRehashing(d)) return DICT_OK;
 
     /* If the hash table is empty expand it to the initial size. */
-    // hash表初始化
+    // hash表刚初始化出来 把hash表数组初始化到4个长度
     if (d->ht[0].size == 0) return dictExpand(d, DICT_HT_INITIAL_SIZE);
 
     /* If we reached the 1:1 ratio, and we are allowed to resize the hash
      * table (global setting) or we should avoid it but the ratio between
      * elements/buckets is over the "safe" threshold, we resize doubling
      * the number of buckets. */
+	/**
+	 * 扩容阈值
+	 * 键值对数量/数组长度>5
+	 */
+	// TODO: 2023/12/13 这个地方有2点没明白 在dictTypeExpandAllowed和当前这个函数中 为什么用used+1而不是直接用used 从上面的判断分支走下来 used为0的情况早已经排除了
     if (d->ht[0].used >= d->ht[0].size &&
         (dict_can_resize ||
          d->ht[0].used/d->ht[0].size > dict_force_resize_ratio) &&
         dictTypeExpandAllowed(d))
     {
-        return dictExpand(d, d->ht[0].used + 1); // 扩容新的数组长度是>节点数的2的幂次方 也就为扩容基准并不是现在数组大小 而是现在节点数量 最坏情况下没有hash冲突保证容纳所有节点
+	    // 扩容新的数组长度是>节点数的2的幂次方 也就为扩容基准并不是现在数组大小 而是现在节点数量 最坏情况下没有hash冲突保证容纳所有节点
+        return dictExpand(d, d->ht[0].used + 1);
     }
     return DICT_OK;
 }
@@ -1267,36 +1435,76 @@ static unsigned long _dictNextPower(unsigned long size)
  *
  * Note that if we are in the process of rehashing the hash table, the
  * index is always returned in the context of the second (new) hash table. */
-// 在字典hash表中key对应的hash表数组脚标 也就是桶位 存在key的时候用existing指针指向节点
-// @param d dict实例
-// @param key 键
-// @param key的hash值
-// @param existing 指向hash表键值对节点 key已经存在的时候找到了key就把指针指向键值对节点
-// @return key的hash桶脚标 -1标识key已经存在
+/**
+ * 已知key(key和key的hash值)计算出它在hash表数组中的脚标
+ * @param existing
+ * @return         返回值就2种情况 要么-1 要么非-1
+ *                 <ul>
+ *                   <li>非-1 就是非负数 表示的key所有在的数组脚标(hash桶位置) 就是根据key的hash值计算出来应该放到hash表数组的什么位置
+ *                     <ul>
+ *                       <li>dict没有在rehash说明只有1张hash表 那脚标就是[0]号表的脚标</li>
+ *                       <li>dict在rehash 说明有2张hash表 那脚标就有可能是[0]号表的也有可能是[1]号表的</li>
+ *                     </ul>
+ *                   </li>
+ *                   <li>-1 计算key在hash表中脚标失败 脚标只依赖于key的hash值和hash表数组的长度
+ *                     <ul>
+ *                       <li>可能是因为key已经存在了 不需要计算出来key在数组中的脚标</li>
+ *                       <li>真的计算不出来 可能在查找过程中发现dict需要扩容 扩容操作失败了</li>
+ *                     </ul>
+ *                   </li>
+ *                 </ul>
+ */
 static long _dictKeyIndex(dict *d, const void *key, uint64_t hash, dictEntry **existing)
 {
+    /**
+     * idx key落在数组的脚标位置 可能是[0]号表的数组位置也可能是[1]号表的数组位置
+     * table 遍历hash表 标识[0]号表[1]号表
+     */
     unsigned long idx, table;
+	// 存放在hash表数组hash桶的链表头
     dictEntry *he;
-    if (existing) *existing = NULL; // 预警式放置指针污染 只有当确定key存在于hash表中时才将该指针指向节点
+    /**
+     * 预警式放置指针污染 只有当确定key存在于hash表中时才将该指针指向节点
+     * 这个操作前置的原因是 下面一个步骤就要考察dict是否需要扩容 如果发现了有扩容需求就会触发扩容
+     * 而扩容可能会失败 如果扩容失败了就会中断当前查找流程
+     * 所以如果这个地方不初始化内存 到时候调用方拿到的查找结果-1是扩容失败导致的 会引起调用方误解(以为key已经存在了) 继而得到了脏数据
+     */
+    if (existing) *existing = NULL;
 
     /* Expand the hash table if needed */
+	/**
+	 * 考察dict是否需要扩容
+	 * 返回-1标识因为扩容失败 没法计算出来key所在的脚标
+	 */
     if (_dictExpandIfNeeded(d) == DICT_ERR)
         return -1;
-    // 只有当字典rehash时才会轮询两张hash表 否则只考察老hash表
+	/**
+	 * 轮询hash表找key
+	 * <ul>
+	 *   <li>扩容导致的rehash还没结束就轮询2张表</li>
+	 *   <li>没在rehash就只找[0]号表</li>
+	 * </ul>
+	 * 判断分支放在[0]号表遍历完 极大简化代码
+	 */
     for (table = 0; table <= 1; table++) {
-        // key所在的数组脚标位置
-        idx = hash & d->ht[table].sizemask; // 位运算计算key的hash桶脚标
+        // key所在的数组脚标 位运算计算key的hash桶脚标
+        idx = hash & d->ht[table].sizemask;
         /* Search if this slot does not already contain the given key */
         // 遍历单链表找到key
         he = d->ht[table].table[idx];
         while(he) {
             if (key==he->key || dictCompareKeys(d, key, he->key)) {
-                if (existing) *existing = he; // 要找的key已经存在了 返回-1标识key已经存在 并把existing指针指向已经存在的键值对
+			    /**
+			     * 找到了key
+			     * 根据调用方需求 调用方需要返回已经存在的key 就把找到的键值对返回出去
+			     */
+                if (existing) *existing = he;
+				// 返回-1标识key已经存在
                 return -1;
             }
             he = he->next;
         }
-        // 字典没有在rehash 就考察hash表老表就行
+        // 字典没有在rehash 就考察[0]号表就行
         if (!dictIsRehashing(d)) break;
     }
     return idx;

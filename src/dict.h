@@ -209,8 +209,8 @@ typedef struct dict {
 	  *     <li>dict没有在rehash</li>
 	  *     <li>dict在rehash</li>
 	  *   </ul></li>
-	  *   <li>正数 标识rehash是暂停的状态</li>
-	  *   <li>负数 标识rehash异常</li>
+	  *   <li>正数 标识rehash是暂停的状态 每调用dictPauseRehash这个API 就对这个成员自增 虽然自增这个代码看似是可重入的 但是联系整个上下文肯定</li>
+	  *   <li>负数 标识异常 怎么会有负数呢 不会的 什么时候才会自减呢 只有在release迭代的时候发现是安全模式的时候才会触发自减操作 首先迭代器实例肯定在单线程中操作的 不存在并发自减情况 其次某个线程也不能释放2次同一个实例把 所以我觉额负数这个情况情理上可以忽略 留着它仅仅是一种边界保护</li>
 	  * </ul>
 	  */
     int16_t pauserehash; /* If >0 rehashing is paused (<0 indicates coding error) */
@@ -226,18 +226,44 @@ typedef struct dict {
 // fingerprint根据字典内存地址生成的64位hash值 代表着字典当前状态 非安全迭代中 如果字典内存发生了新的变化 则fingerprint的值也会发生变化 用于非安全迭代的快速失败
 typedef struct dictIterator {
     dict *d; // 指向字典指针
-    long index; // 标识着哪些槽已经遍历过
+	/**
+	 * 标识着最后一次访问过的hash表的hash槽
+	 * 自然也就知道下一次访问的数组位置
+	 */
+    long index;
 
 	/**
 	 * table 当前正在迭代的hash表 可能是[0]号表也可能是[1]号表
 	 * safe 标识是否安全
+	 *      <ul>
+	 *        <li>0 非安全模式</li>
+	 *        <li>1 安全模式</li>
+	 *      </ul>
+	 *      怎么理解迭代的安全性
+	 *      假使dict正在rehash 也就有2张hash表
+	 *      目前已经访问的的位置是[1]号表的x 也就是说整个dict还剩可以访问的位置是[1]号表的[x...]位置
+	 *      此时rehash进行到了[0]号表的y 整个hash桶上的键值对节点都被rehash到了[1]号表的z(z>=x)脚标上
+	 *      那么就会发生尴尬的事情就是当初[0]号表y位置的所有键值对都会被访问2次
+	 *
+	 * 怎么使用的呢 将来在next的过程中考察safe这个成员->控制pauserehash自增
+	 * 那么当前前台请求进来过后发现dict需要rehash 但是发现pauserehash要暂停 就停止了协助迁移hash桶
 	 */
     int table, safe;
-    // entry 标识当前已经返回的节点
-    // nextEntry 标识下一个节点
+
+	/**
+	 * entry标识已经访问的最后一个键值对
+	 * nextEntry标识可以访问的下一个键值对
+	 */
     dictEntry *entry, *nextEntry;
+
     /* unsafe iterator fingerprint for misuse detection. */
-    // 字典dict当前状态签名 64位hash值
+	/**
+	 * 能够体现dict数据状态的一个算法签名
+	 * <ul>
+	 *   <li>在安全访问模式下 肯定更没有需要这个成员的必要性 因为假使在rehash也会被叫停尽量保证了数据变更干扰</li>
+	 *   <li>在非安全访问模式下 我觉得没有存在的必要性 但是可以用来作为一个时间窗口内的比对参考 假使用的是非安全迭代模式 那么这个时候是在兼顾性能前提下进行的迭代(即可以继续rehash工作) 然后在某个时间段内进行了迭代访问 完事了比对一下这个签名 发现竟然没变 因为恰好在这个时间窗口内 没有put请求 没有delete请求 没有rehash诸如此类的 会不会有种幸运的感觉</li>
+	 * </ul>
+	 */
     long long fingerprint;
 } dictIterator;
 
@@ -359,11 +385,14 @@ dictEntry * dictFind(dict *d, const void *key);
  * </ul>
  */
 void *dictFetchValue(dict *d, const void *key);
+// 手动触发hash表扩容
 int dictResize(dict *d);
 dictIterator *dictGetIterator(dict *d);
 dictIterator *dictGetSafeIterator(dict *d);
+// 使用迭代器访问数据
 dictEntry *dictNext(dictIterator *iter);
 void dictReleaseIterator(dictIterator *iter);
+// 随机取一个键值对
 dictEntry *dictGetRandomKey(dict *d);
 dictEntry *dictGetFairRandomKey(dict *d);
 unsigned int dictGetSomeKeys(dict *d, dictEntry **des, unsigned int count);

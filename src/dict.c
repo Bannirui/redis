@@ -161,8 +161,8 @@ int _dictInit(dict *d, dictType *type,
 /* Resize the table to the minimal size that contains all the elements,
  * but with the invariant of a USED/BUCKETS ratio near to <= 1 */
 /**
- * hash表的扩容
- * hash表每次扩容扩到多大 数组长度扩到当前键值对数量 并保证长度为2的幂次方
+ * 手动触发hash表扩容
+ * hash表每次扩容扩到多大: 数组长度扩到当前键值对数量 并保证长度为2的幂次方
  * 当前键值对数量的界定=min{4, 键值对实际数量}
  */
 int dictResize(dict *d)
@@ -316,15 +316,16 @@ int dictTryExpand(dict *d, unsigned long size) {
  * guaranteed that this function will rehash even a single bucket, since it
  * will visit at max N*10 empty buckets in total, otherwise the amount of
  * work it does would be unbound and the function may block for a long time. */
-// 渐进式rehash实现
-// @param n 迁移n个hash桶
-// @return 1 标识hash表还有节点待迁移
-//         0 标识hash表已经迁移完成
 /**
- *
+ * 渐进式rehash实现
  * @param d
  * @param n 目标帮助迁移n个hash桶
- * @return
+ *          所谓目标是迁移n个hash桶 实际上前的数量<=n的 因为中间涉及到性能保护的设计可以让线程提前退出rehash流程
+ * @return  返回值为0或者1
+ *          <ul>
+ *            <li>0 标识dict的rehash已经完成 现在有且只有1个hash表 不再需要线程进来帮助迁移hash桶了</li>
+ *            <li>1 标识dict的hash表还有hash桶要迁移</li>
+ *          </ul>
  */
 int dictRehash(dict *d, int n) {
 	/**
@@ -395,7 +396,7 @@ int dictRehash(dict *d, int n) {
             de = nextde;
         }
         d->ht[0].table[d->rehashidx] = NULL; // 一个桶上单链表所有节点都迁移完了
-        d->rehashidx++; // 一个桶迁移结束 后移待迁移的桶脚标
+        d->rehashidx++; // 一个桶迁移结束后 下一次迁移的脚标位置
     }
 
     /* Check if we already rehashed the whole table... */
@@ -885,7 +886,7 @@ long long dictFingerprint(dict *d) {
 }
 
 /**
- *
+ * 实例化不安全模式的迭代器
  */
 dictIterator *dictGetIterator(dict *d)
 {
@@ -893,56 +894,109 @@ dictIterator *dictGetIterator(dict *d)
     dictIterator *iter = zmalloc(sizeof(*iter));
     // 迭代器初始化
     iter->d = d;
-    iter->table = 0; // 不管是否在rehash中 从旧表开始准没错的
-    iter->index = -1; // 刚初始化出来的迭代器 -1标识还没有遍历过hash桶 也就是说下一次迭代从0号桶开始
-    iter->safe = 0; // 迭代过程中不强制要求rehash暂停
+    // 不管是否在rehash中 从旧表开始准没错的
+    iter->table = 0;
+
+	/**
+	 * 刚初始化出来的迭代器 -1标识还没有遍历过hash桶
+	 * 也就是说下一次迭代从0号桶开始
+	 */
+    iter->index = -1;
+
+	/**
+	 * 不要求安全迭代模式
+	 * 也即不强制要求dict暂停rehash
+	 */
+    iter->safe = 0;
     iter->entry = NULL;
     iter->nextEntry = NULL;
     return iter;
 }
 
-// 获取字典的安全模式迭代器
-// @param d dict实例
-// @return 迭代器实例
+/**
+ * 实例化安全模式的迭代器
+ */
 dictIterator *dictGetSafeIterator(dict *d) {
+    // 不安全模式的迭代器
     dictIterator *i = dictGetIterator(d);
-    // 安全模式的迭代器 在迭代过程中暂停rehash
+	/**
+	 * 用这个成员来标识安全模式
+	 * 怎么使用的呢 将来在next的过程中考察safe这个成员->控制pauserehash自增
+	 * 那么当前前台请求进来过后发现dict需要rehash 但是发现pauserehash要暂停 就停止了协助迁移hash桶
+	 */
     i->safe = 1;
     return i;
 }
 
-// 通过迭代器遍历节点
-// @param iter 迭代器
-// @return entry键值对
+/**
+ * 使用迭代器访问数据
+ * 至于是否是安全模式就看迭代器的safe成员了 由它来决定
+ */
 dictEntry *dictNext(dictIterator *iter)
 {
     while (1) {
-        // 什么时候会entry位null
-        // 初始化完迭代器后首次调用这个方法的时候
-        // 某个hash桶是空的
-        // 某个hash桶的链表遍历完之后
+		/**
+		 * 什么时候会entry位null
+		 * <ul>
+		 *   <li>初始化完迭代器后首次调用这个方法的时候</li>
+		 *   <li>某个hash桶是空的</li>
+		 *   <li>某个hash桶的链表遍历完之后</li>
+		 * </ul>
+		 * 因为键值对节点仅仅的存在形式是单链表节点
+		 * 因此总言之可以这么理解这个边界条件: hash表上的某个hash桶的单链表访问完了
+		 * 要驱动着后移数组脚标了 既然数组脚标要动 就要考虑
+		 * <ul>
+		 *   <li>数组脚标溢出</li>
+		 *   <li>数组访问结束了 是不是还有另一个数组要继续访问</li>
+		 * </ul>
+		 * 那么也就是单链表访问结束->倒过来去考察数据脚标->继续考察整个数组->考察dict有没有其他hash表了
+		 */
         if (iter->entry == NULL) {
-            dictht *ht = &iter->d->ht[iter->table]; // hash表
-            if (iter->index == -1 && iter->table == 0) { // 初始化刚进来
+		    // hash桶访问结束了 准备访问数组的下一个hash桶 得先定位到hash表的数组
+            dictht *ht = &iter->d->ht[iter->table];
+			/**
+			 * 每个人的编码不尽相同
+			 * 为什么在这加个前置条件 不加行不行
+			 * <ul>
+			 *   <li>首先不加这个if肯定是可以的 直接把数组脚标后移继续迭代 但是这样做的话就要把某些初始化工作前置到初始化时候了</li>
+			 *   <li>这样做起始本质就是懒加载 在实例化/初始化的时候只关注资源以及必要的数据状态 假使迭代器是要实例化出来一个安全模式的 那标记完必要的状态成员后 暂停rehash这个完全没有必要做 因为你不知道初始化出来的这个玩意将来实际被不被真正使用 如果并不被使用 那么这次浪费的资源就是白白浪费</li>
+			 * </ul>
+			 * 我自己也是推荐懒加载的方式进行编码 有些资源后置延迟到使用的时机处理
+			 */
+            if (iter->index == -1 && iter->table == 0) {
+				/**
+				 * 延迟处理访问模式
+				 * <ul>
+				 *   <li>安全迭代模式 就打上暂停rehash的标志 给将来想要参与rehash的线程看 它看到了自然就放弃rehash工作了</li>
+				 *   <li>不是安全模式 给dict打个签名 比如一个访问周期结束了 将来比较一下此时的和彼时的两个值 签名不一样肯定在访问周期内动过了数据</li>
+				 * </ul>
+				 */
                 if (iter->safe)
-                    dictPauseRehashing(iter->d); // 安全迭代模式 暂停rehash
+                    dictPauseRehashing(iter->d);
                 else
-                    iter->fingerprint = dictFingerprint(iter->d); // 非安全模式迭代 给字典内存地址来个签名
+                    iter->fingerprint = dictFingerprint(iter->d);
             }
-            iter->index++; // 推进hash表桶脚标
-            if (iter->index >= (long) ht->size) { // 整张hash表的所有hash桶都遍历完了
-                if (dictIsRehashing(iter->d) && iter->table == 0) { // 字典在做rehash 也就说还有数据在新表上 继续遍历第二张表
+			// hash桶里面链表访问结束了 就后移数组指针找下一个hash桶 移动了数组脚标 就要溢出检查
+            iter->index++;
+            if (iter->index >= (long) ht->size) {
+			    // 数组访问溢出了 说明hash表读完了 就要考察dict是不是还有hash表了
+                if (dictIsRehashing(iter->d) && iter->table == 0) {
+				    // dict还有hash表可读
                     iter->table++;
                     iter->index = 0;
                     ht = &iter->d->ht[1];
                 } else {
-                    break; // 字典没有在rehash 所有数据都在第一张hash表上 遍历完了整个hash表 迭代过程也就结束了
+				    // 整个dict都读完了 直接跳出了最外层的while死循环
+                    break;
                 }
             }
+			// 找到了hash表数组上的新的hash桶
             iter->entry = ht->table[iter->index];
         } else {
+		    // hash桶里面的链表还没到底 那就顺着链表找后继节点
             iter->entry = iter->nextEntry;
         }
+		// 当前访问的键值对entry 保存现场 记录好后继节点 才能在外层轮询下去 因为实际使用肯定是while((x=dictNext(d))!=NULL){}
         if (iter->entry) {
             /* We need to save the 'next' here, the iterator user
              * may delete the entry we are returning. */
@@ -953,22 +1007,36 @@ dictEntry *dictNext(dictIterator *iter)
     return NULL;
 }
 
-// 回收迭代器
 void dictReleaseIterator(dictIterator *iter)
 {
-    if (!(iter->index == -1 && iter->table == 0)) { // 说明迭代器已经处理工作中 开始了遍历
+    /**
+     * 不太理解的地方在于 为什么要费劲恢复一些状态
+     * 既然我的目的是释放内存 回收资源 为什么还要做这些不想干的事情 反正我都是要回收资源的
+     * 内存一旦释放了 别人也不能再拿着这个迭代器实例继续操作的 也就不用担心因为数据污染了
+     * <ul>
+     *   <li>没在使用的迭代器 简单地释放内存资源即可</li>
+     *   <li>在使用中的迭代器 就要先进行一些状态复位工作 再释放回收内存
+     *     <ul>
+     *       <li>安全模式下 safe这个成员是1 给它自减到0 标识迭代器处于正常状态</li>
+     *       <li>非安全模式下 比较一下签名 看看在迭代过程期间 用户没有没有操作过hash表</li>
+     *     </ul>
+     *   </li>
+     * </ul>
+     */
+    if (!(iter->index == -1 && iter->table == 0)) {
         if (iter->safe)
-            dictResumeRehashing(iter->d); // 删除该线程的暂停rehash
+            dictResumeRehashing(iter->d);
         else
-            assert(iter->fingerprint == dictFingerprint(iter->d)); // 非安全迭代模式下 比较迭代器状态签名 不一致说明在迭代过程中用户了尽心改了非法操作
+            assert(iter->fingerprint == dictFingerprint(iter->d));
     }
-    zfree(iter); // 回收迭代器内存
+    zfree(iter);
 }
 
 /* Return a random entry from the hash table. Useful to
  * implement randomized algorithms */
-// 随机从字典中获取一个节点
-// 随机获取一个hash槽 在链表上随机获取一个节点
+/**
+ * 随机获取一个key的键值对
+ */
 dictEntry *dictGetRandomKey(dict *d)
 {
     dictEntry *he, *orighe;

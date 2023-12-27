@@ -6932,10 +6932,10 @@ int main(int argc, char **argv) {
      * 后续的内存申请都将使用zmalloc 为其设置OOM处理器
      */
     zmalloc_set_oom_handler(redisOutOfMemoryHandler);
-	// TODO: 2023/11/13
 	/**
 	 * <li>首先为啥同时使用srand和srandom库函数 而不是直接统一使用srandom函数</li>
 	 * <li>在随机数播种时候使用了比较经典的方式 恰好下面一行代码就要获取当前系统时间 是否可以将下面一行代码前置 然后播种使用这个值 减少一次系统调用的开销</li>
+	 * 提交了issue https://github.com/redis/redis/issues/12756
 	 */
     // 随机数播种
     srand(time(NULL)^getpid());

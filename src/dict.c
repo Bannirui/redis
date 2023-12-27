@@ -144,6 +144,16 @@ int _dictInit(dict *d, dictType *type,
      */
     _dictReset(&d->ht[0]);
     _dictReset(&d->ht[1]);
+	/**
+	 * 多态函数
+	 * 从dict视角看到的key是地址 value大概率也是地址(也有可能是整数)
+	 * 因此只能期待用户指定好关于key和value的所有操作函数定义
+	 * <ul>
+	 *   <li>key的hash函数</li>
+	 *   <li>key的复制/比较/回收</li>
+	 *   <li>value的复制/回收</li>
+	 * </ul>
+	 */
     d->type = type;
     d->privdata = privDataPtr;
 	/**
@@ -206,7 +216,7 @@ int _dictExpand(dict *d, unsigned long size, int* malloc_failed)
 	 * <ul>
 	 *   <li>首先dict要是已经在rehash中了 上一次的hash桶还没迁移完 就不能再触发扩容</li>
 	 *   <li>其次 要检验期待扩容的大小是否合理 扩容是因为当前数组的容量使用达到了某一阈值 也就是扩容时机问题 dict中hash表的数据结构是数组+链表 极致情况下 如果用空间换时间 没有出现hash冲突的时候 hash表退化成数组 那么数组的最小长度就是键值对数量
-	 *       那么一次扩容被触发 最优的扩容后长度=min(比size的最小的2的幂次方, >=键值对数量)
+	 *       那么一次扩容被触发 最优的扩容后长度=min(比size大的最小的2的幂次方, >=键值对数量)
 	 *   </li>
 	 * </ul>
 	 * 扩容时机是发生在dictAdd中考察键值对数量是否过多 键值对数量/数组长度>5
@@ -318,7 +328,6 @@ int dictTryExpand(dict *d, unsigned long size) {
  * work it does would be unbound and the function may block for a long time. */
 /**
  * 渐进式rehash实现
- * @param d
  * @param n 目标帮助迁移n个hash桶
  *          所谓目标是迁移n个hash桶 实际上前的数量<=n的 因为中间涉及到性能保护的设计可以让线程提前退出rehash流程
  * @return  返回值为0或者1
@@ -424,12 +433,22 @@ long long timeInMilliseconds(void) {
 /* Rehash in ms+"delta" milliseconds. The value of "delta" is larger 
  * than 0, and is smaller than 1 in most cases. The exact upper bound 
  * depends on the running time of dictRehash(d,100).*/
+/**
+ * 在ms毫秒内协助迁移hash桶
+ * @param ms 给定的时间毫秒
+ * @return 迁移了多少个hash桶
+ */
 int dictRehashMilliseconds(dict *d, int ms) {
     if (d->pauserehash > 0) return 0;
 
     long long start = timeInMilliseconds();
+	/**
+	 * 统计帮助迁移了多少个hash桶
+	 * 这个数量不是严格准确的
+	 * 严格语义是计划帮助迁移多少个hash桶
+	 */
     int rehashes = 0;
-
+	// 在ms时间内进行迁移
     while(dictRehash(d,100)) {
         rehashes += 100;
         if (timeInMilliseconds()-start > ms) break;
@@ -457,16 +476,13 @@ static void _dictRehashStep(dict *d) {
 }
 
 /* Add an element to the target hash table */
-// 添加kv键值对
-// @param 向哪个dict实例中添加键值对
-// @param [key, val]键值对 hash节点
-// @return 操作码 0-标识操作成功 1-标识操作失败
 /**
- *
- * @param d
- * @param key
- * @param val
- * @return
+ * 往dict中添加键值对
+ * @return 操作状态码
+ *         <ul>
+ *           <li>0 标识添加成功</li>
+ *           <li>1 标识添加失败</li>
+ *         </ul>
  */
 int dictAdd(dict *d, void *key, void *val)
 {
@@ -1045,21 +1061,16 @@ dictEntry *dictGetRandomKey(dict *d)
 
     if (dictSize(d) == 0) return NULL; // 空表
     if (dictIsRehashing(d)) _dictRehashStep(d); // 协助迁移一个hash桶
-    if (dictIsRehashing(d)) { // 字典在rehash 要关注两个表
+    if (dictIsRehashing(d)) {
         do {
             /* We are sure there are no elements in indexes from 0
              * to rehashidx-1 */
-            // 字典正在rehash
-            // 对于老表而言 [0...rehashidx-1]已经迁移完成了 这部分桶在老表上都是空的了 不必要考察了
-            // size是节点数量
-            // [0...rehashidx-1] rehashidx [rehashidx+1...size-1]
-            // 随机出来一个桶脚标 再看看是在哪张表上
-            // 桶里面有节点就找到了链表头
+			// 2个数组怎么随机索引脚标的方式
             h = d->rehashidx + (randomULong() % (dictSlots(d) - d->rehashidx));
             he = (h >= d->ht[0].size) ? d->ht[1].table[h - d->ht[0].size] :
                                       d->ht[0].table[h];
         } while(he == NULL);
-    } else { // 字典没有在rehash 只关注第一张表就行
+    } else {
         do {
             h = randomULong() & d->ht[0].sizemask; // 随机一个桶索引
             he = d->ht[0].table[h]; // 桶里面有节点就找到了链表头
@@ -1104,38 +1115,101 @@ dictEntry *dictGetRandomKey(dict *d)
  * of continuous elements to run some kind of algorithm or to produce
  * statistics. However the function is much faster than dictGetRandomKey()
  * at producing N elements. */
-// 随机采集指定数量的节点
-// 可能返回的数量达不到指定要求的个数
-// @param des 随机返回的节点 一维数组首地址
-// @pram count 随机采集多少个节点
+/**
+ * 从dict中找出来的键值对放到数组des中
+ * des数组中存放的键值对数量肯定是小于等于期望要找的count个
+ * <ul>
+ *   <li>dict中原本的键值对数量就少于count个</li>
+ *   <li>键值对分布离散不是很好 用完了所有扫描次数的机会也没有找满count个</li>
+ * </ul>
+ * @param des  从dict中找到的键值对放在这个数组里面
+ * @param count 想要从dict中找count个键值对
+ * @return 数组里面放了多少个键值对
+ */
 unsigned int dictGetSomeKeys(dict *d, dictEntry **des, unsigned int count) {
     unsigned long j; /* internal hash table id, 0 or 1. */
+	/*
+	 * 记录要遍历几张hash表
+	 * 遍历dict找键值对本质就是遍历hash表
+	 * <ul>
+	 *   <li>dict在rehash就有2张hash表</li>
+	 *   <li>dict没有在rehash就有1张hash表</li>
+	 * </ul>
+	 */
     unsigned long tables; /* 1 or 2 tables? */
+	/**
+	 * maxsizemask记录hash表数组长度掩码(掩码=数组长度-1)
+	 * 因为可能面临着dict在rehash 有两张hash表 也就意味着一定有2个数组长度 以及对应的掩码
+	 * maxsizemask用来记录二者之间的较大值 为什么要这样设计呢
+	 * 比如
+	 * <ul>
+	 *   <li>第1张hash表长度 sz1 sizemask1=sz1-1 那么根据hash值计算出来的hash数组脚标区间就是[0...sz1-1]</li>
+	 *   <li>第2张hash表长度 sz2 sizemask2=sz2-1 那么根据hash值计算出来的hash数组脚标区间就是[0...sz2-1]</li>
+	 * </ul>
+	 * 用二者较大值为掩码依据是为了保证样本量最够大 比较符合随机性的语义
+	 * <ul>
+	 *   <li>首先随机出来的脚标要么在[0]号表要么在[1]号表 也就是说至少在一张表中能找到脚标</li>
+	 *   <li>那么如果只取二者较小值为依据 就意味着较大的hash表中靠数组后面的区域将无法触达</li>
+	 * </ul>
+	 *
+	 * stored记录实际收集到的键值对数量
+	 */
     unsigned long stored = 0, maxsizemask;
-    unsigned long maxsteps; // 采集次数上限
+    /**
+     * 考察多少个hash桶
+     * 想要count个键值对 这些键值对在hash表数组上的分布是未知的
+     * 因此人为设定一个阈值
+     * <ul>
+     *   <li>dict中存储很少的键值对 压根不够count个 所以想要找齐count个 就意味着有重复 二者数量差越大意味着重复键值对越多 本质没有什么意义</li>
+     *   <li>其次 即使dict中很多键值对 但是分布情况未知 最坏情况 每次随机出来或者线性出来的地址上都是空桶 总不能一直坚持到找满count个键值对</li>
+     * </ul>
+     */
+    unsigned long maxsteps;
 
-    // 最多也就将整个dict的所有的节点都遍历出来
+	/**
+	 * 数据规模的边界
+	 */
     if (dictSize(d) < count) count = dictSize(d);
     maxsteps = count*10;
 
     /* Try to do a rehashing work proportional to 'count'. */
-    for (j = 0; j < count; j++) { // 字典在rehash中 尝试协助迁移count个桶
+	/**
+	 * rehash策略
+	 * 但是我不太理解这个地方用轮询的目的
+	 * <ul>
+	 *   <li>如果逆向思考的话 能解释的原用就是作者为了兼顾安全迭代器的数据安全(或者说尽量减少不必要的数据污染)</li>
+	 *   <li>我个人觉得即使对迭代器有影响 也可以将其优先级下拉 我提交的issue https://github.com/redis/redis/issues/12886</li>
+	 * </ul>
+	 */
+    for (j = 0; j < count; j++) {
         if (dictIsRehashing(d))
             _dictRehashStep(d);
         else
             break;
     }
-    // dict在rehash就要遍历2张hash表
+    // 确定遍历dict需要轮询几张hash表
     tables = dictIsRehashing(d) ? 2 : 1;
-    // dict在rehash时 掩码=max{老表掩码, 新表掩码}
+    // 确定hash表的较大数组长度掩码
     maxsizemask = d->ht[0].sizemask;
     if (tables > 1 && maxsizemask < d->ht[1].sizemask)
         maxsizemask = d->ht[1].sizemask;
 
     /* Pick a random point inside the larger table. */
-    // 随机出一个hash槽 这个桶脚标i区间[0...两个hash表中的最大长度)
+    /**
+     * 随机性的体现
+     * 要在dict找随机找到count个键值对
+     * 从hash表的哪个位置开始找
+     * 随机出来一个hash表数组脚标
+     * <ul>
+     *   <li>很顺利收集到要的count个键值对</li>
+     *   <li>运气很不好 连续随机嗅探都是空hash桶 这种情况下就要及时止损 重新随机其实hash表脚标</li>
+     * </ul>
+     */
     unsigned long i = randomULong() & maxsizemask;
-    // 空槽计数
+    /**
+     * 用来统计在检索过程中遇到的连续空桶防止随机出来的脚标不好
+     * 所以对这种情况设置一个阈值 新随机一个脚标出来
+     */
     unsigned long emptylen = 0; /* Continuous empty entries so far. */
     while(stored < count && maxsteps--) {
         // dict在rehash就遍历两张hash表 没在rehash就遍历一张hash表
@@ -1143,53 +1217,80 @@ unsigned int dictGetSomeKeys(dict *d, dictEntry **des, unsigned int count) {
             /* Invariant of the dict.c rehashing: up to the indexes already
              * visited in ht[0] during the rehashing, there are no populated
              * buckets, so we can skip ht[0] for indexes between 0 and idx-1. */
-            // 跳过那些已经迁移到新表的槽
-            // tables==2 -> dict正在rehash
-            // j==0 -> 当前在遍历旧表
-            // i<=rehashidx -> 桶i已经被迁移了
             if (tables == 2 && j == 0 && i < (unsigned long) d->rehashidx) {
                 /* Moreover, if we are currently out of range in the second
                  * table, there will be no elements in both tables up to
                  * the current rehashing index, so we jump if possible.
                  * (this happens when going from big to small table). */
-                // i的区间是[0...max(size)) 怎么会发生i>=size呢
-                // 说明发生了缩容场景 新表是要比旧表小的
-                // 随机出来的桶脚标已经超出了新表上限
-                // 所以桶只能在老表上 但是老表上的这个桶又被迁移了
-                // 因此重新赋值为旧表上有效的桶脚标
                 if (i >= d->ht[1].size)
                     i = d->rehashidx;
                 else
-                    // 随机出来的桶脚标i已经被迁移到了新表上 开始考察新表
                     continue;
             }
             // 无效桶脚标
             if (i >= d->ht[j].size) continue; /* Out of range for this table. */
-            dictEntry *he = d->ht[j].table[i]; // 桶里面元素
+			// 找到hash桶里面的单链表
+            dictEntry *he = d->ht[j].table[i];
 
             /* Count contiguous empty buckets, and jump to other
              * locations if they reach 'count' (with a minimum of 5). */
-            if (he == NULL) { // 空桶
-                emptylen++; // 空桶计数
+            if (he == NULL) {
+			    /**
+			     * 记录在搜索过程中连续探测到的空hash桶
+			     * 人为设定一个阈值 达到阈值之后很有可能dict中数据很集中
+			     * 假使n个hash桶 数据全部在最后一个桶 现在随机出来的脚标是0
+			     * 因此设定一个阈值来考察数据分布的质量
+			     *
+			     * 觉得数据分布质量不好了 不能再线性嗅探了 得重新随机一个脚标
+			     * 这个地方就有了一个负面影响 一旦重新随机 就意味着找到的键值对会重复
+			     */
+                emptylen++;
                 if (emptylen >= 5 && emptylen > count) {
                     i = randomULong() & maxsizemask;
                     emptylen = 0;
                 }
-            } else { // 桶里面有单链表
+            } else {
+			    // 重置 emptyLen的语义是连续空桶数量
                 emptylen = 0;
-                while (he) { // 采集链表上的节点
+				/**
+				 * 从hash桶中拿到单链表
+				 * 从链表头开始遍历链表节点 添加到数组des中 并记录放到数组中的元素数量
+				 */
+                while (he) {
                     /* Collect all the elements of the buckets found non
                      * empty while iterating. */
+					/**
+					 * 语义就是向数组中添加元素
+					 * <ul>
+					 *   <li>des指向的数组中元素该存放的地址</li>
+					 *   <li>将dict中键值对放到数组中</li>
+					 *   <li>将数组指针后移</li>
+					 *   <li></li>
+					 * </ul>
+					 *
+					 */
                     *des = he;
                     des++;
                     he = he->next;
+					// 记录收集到的键值对的数量
                     stored++;
+					// 目标达成 收集到了count个键值对
                     if (stored == count) return stored;
                 }
             }
         }
-        i = (i+1) & maxsizemask; // 下一个hash桶脚标
+		/**
+		 * 随机出来一个数组脚标
+		 * 然后线性嗅探去收集探测到的键值对
+		 * 停止检索的边界
+		 * <ul>
+		 *   <li>收集全了</li>
+		 *   <li>压根收集不全 人为设置阈值用于结束流程</li>
+		 * </ul>
+		 */
+        i = (i+1) & maxsizemask;
     }
+	// 搜集到的键值对数量
     return stored;
 }
 
@@ -1206,13 +1307,17 @@ unsigned int dictGetSomeKeys(dict *d, dictEntry **des, unsigned int count) {
  * In this way we smooth away the problem of different chain lengths. */
 #define GETFAIR_NUM_ENTRIES 15
 dictEntry *dictGetFairRandomKey(dict *d) {
+    // 数组
     dictEntry *entries[GETFAIR_NUM_ENTRIES];
+	// 从dict中争取找15个键值对出来放到数组中 count记录这个数组中真实存放了多少个键是对
     unsigned int count = dictGetSomeKeys(d,entries,GETFAIR_NUM_ENTRIES);
     /* Note that dictGetSomeKeys() may return zero elements in an unlucky
      * run() even if there are actually elements inside the hash table. So
      * when we get zero, we call the true dictGetRandomKey() that will always
      * yield the element if the hash table has at least one. */
+	// 批量找的时候没找到 可能是运气不好 再给个机会
     if (count == 0) return dictGetRandomKey(d);
+	// 从批量里面等概率随机一个键值对
     unsigned int idx = rand() % count;
     return entries[idx];
 }
@@ -1221,8 +1326,9 @@ dictEntry *dictGetFairRandomKey(dict *d) {
  * http://graphics.stanford.edu/~seander/bithacks.html#ReverseParallel */
 // 二进制形式翻转
 static unsigned long rev(unsigned long v) {
+    // 多少位
     unsigned long s = CHAR_BIT * sizeof(v); // bit size; must be power of 2
-    // 64位全是1
+    // 0按位取反 64位全是1
     unsigned long mask = ~0UL;
     while ((s >>= 1) > 0) {
         mask ^= (mask << s);
@@ -1321,8 +1427,15 @@ unsigned long dictScan(dict *d,
                        dictScanBucketFunction* bucketfn,
                        void *privdata)
 {
+    // 指向2张hash表
     dictht *t0, *t1;
+	/**
+	 * 用在单链表遍历的时候
+	 * de指向当前节点
+	 * next指向后继节点
+	 */
     const dictEntry *de, *next;
+	// hash表数组长度掩码
     unsigned long m0, m1;
 
     if (dictSize(d) == 0) return 0;
@@ -1345,9 +1458,11 @@ unsigned long dictScan(dict *d,
 
         /* Set unmasked bits so incrementing the reversed cursor
          * operates on the masked bits */
+		// 按位取反
         v |= ~m0;
 
         /* Increment the reverse cursor */
+		// 二进制位翻转
         v = rev(v);
         v++;
         v = rev(v);
@@ -1442,16 +1557,32 @@ static int _dictExpandIfNeeded(dict *d)
      * elements/buckets is over the "safe" threshold, we resize doubling
      * the number of buckets. */
 	/**
-	 * 扩容阈值
-	 * 键值对数量/数组长度>5
+	 * 扩容时机
+	 * <ul>
+	 *   <li>键值对的数量已经达到了hash表数组长度 就平均而言 可以理解为最坏情况下每个hash桶都被占了</li>
+	 *   <li>并且每个hash桶里面的链表长度平均超过了5</li>
+	 * </ul>
+	 * 核心还是因为担心最坏情况下某个或者某些链表过长导致检索的时间复杂度过高 所以用空间换时间
 	 */
-	// TODO: 2023/12/13 这个地方有2点没明白 在dictTypeExpandAllowed和当前这个函数中 为什么用used+1而不是直接用used 从上面的判断分支走下来 used为0的情况早已经排除了
     if (d->ht[0].used >= d->ht[0].size &&
         (dict_can_resize ||
          d->ht[0].used/d->ht[0].size > dict_force_resize_ratio) &&
         dictTypeExpandAllowed(d))
     {
-	    // 扩容新的数组长度是>节点数的2的幂次方 也就为扩容基准并不是现在数组大小 而是现在节点数量 最坏情况下没有hash冲突保证容纳所有节点
+		/**
+	     * 扩容新的数组长度是>节点数的2的幂次方 也就为扩容基准并不是现在数组大小 而是现在节点数量 最坏情况下没有hash冲突保证容纳所有节点
+	     * 为什么要用used+1作为基数呢 而不是用used
+	     * 因为后面要用到一个函数_dictNextPower(x)来求不小于x的最小的2的幂次方整数 也就是求出来的结果是大于等于x的最小的2的幂次方
+	     * 如果仅仅用used的话 是可能导致扩容结果还是used 那扩容了个寂寞
+	     * 所以为了这个边界在这个地方设置扩容的起点就是used+1
+	     *
+	     * 怎么扩容，数组扩到多大，怎么限制扩容数组大小
+	     * <ul>
+	     *   <li>以扩容前键值对数量为基数，比这个大就行，也就是在最优情况下让hash表的结构退化成数组，加快检索的效率，降低时间复杂度</li>
+	     *   <li>为了替代取模运算%，用上位运算，人为保证数组的长度是2的幂次方</li>
+	     *   <li>在上面2个前提之下，将数组长度约束到最小，因为一次扩容直接过大，也会存在极大概率导致空间浪费</li>
+	     * </ul>
+		 */
         return dictExpand(d, d->ht[0].used + 1);
     }
     return DICT_OK;
@@ -1593,6 +1724,7 @@ void dictDisableResize(void) {
     dict_can_resize = 0;
 }
 
+// key的hash值
 uint64_t dictGetHash(dict *d, const void *key) {
     return dictHashKey(d, key);
 }

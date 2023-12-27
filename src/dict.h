@@ -53,11 +53,9 @@
  */
 #define DICT_NOTUSED(V) ((void) V)
 
-// 哈希表的节点 存储k-v键值对
-// hash表的节点会组成一个单链表
-// key可以是void*指针类型 相当于Java的Object
+// hash表中的键值对 在单链表中的节点
 typedef struct dictEntry {
-    void *key; // 节点的key
+    void *key; // 键值对的key
 	/**
 	 * 这个键值对的值设计成union很巧妙
 	 * <ul>
@@ -95,8 +93,9 @@ typedef struct dictEntry {
         uint64_t u64;
         int64_t s64;
         double d;
-    } v;
-    struct dictEntry *next; // 下一个节点 相当于单链表
+    } v; // 键值对的value
+	// 后驱节点
+    struct dictEntry *next;
 } dictEntry;
 
 // 字典类型
@@ -287,11 +286,12 @@ typedef void (dictScanBucketFunction)(void *privdata, dictEntry **bucketref);
  *   <li>有符号整数</li>
  *   <li>浮点数</li>
  * </ul>
- * 这个宏就是来赋值用的val的 也就是说只用来处理指针类型的数据
+ * 这个宏就是来赋值用的val的
+ * 如果是数字 可以简单的复制
  * 指针类型数据涉及深拷贝/浅拷贝 因此怎么复制交给调用方决定
  * <ul>
  *   <li>调用方指定了valDup函数 就用指定的函数进行拷贝</li>
- *   <li>调用放没有指定 因为是指针类型 就直接赋值 比如客户端断定这个数据前拷贝足矣</li>
+ *   <li>调用放没有指定 因为是指针类型 就直接赋值 比如客户端断定这个数据浅拷贝足矣</li>
  * </ul>
  */
 #define dictSetVal(d, entry, _val_) do { \
@@ -395,18 +395,23 @@ void dictReleaseIterator(dictIterator *iter);
 // 随机取一个键值对
 dictEntry *dictGetRandomKey(dict *d);
 dictEntry *dictGetFairRandomKey(dict *d);
+// 从dict中找键值对
 unsigned int dictGetSomeKeys(dict *d, dictEntry **des, unsigned int count);
 void dictGetStats(char *buf, size_t bufsize, dict *d);
 uint64_t dictGenHashFunction(const void *key, int len);
 uint64_t dictGenCaseHashFunction(const unsigned char *buf, int len);
 void dictEmpty(dict *d, void(callback)(void*));
+// 2个setter方法
 void dictEnableResize(void);
 void dictDisableResize(void);
+// 渐进式rehash 协助迁移n个hash桶
 int dictRehash(dict *d, int n);
+// 在ms毫秒内协助迁移hash桶
 int dictRehashMilliseconds(dict *d, int ms);
 void dictSetHashFunctionSeed(uint8_t *seed);
 uint8_t *dictGetHashFunctionSeed(void);
 unsigned long dictScan(dict *d, unsigned long v, dictScanFunction *fn, dictScanBucketFunction *bucketfn, void *privdata);
+// key的hash值
 uint64_t dictGetHash(dict *d, const void *key);
 dictEntry **dictFindEntryRefByPtrAndHash(dict *d, const void *oldptr, uint64_t hash);
 

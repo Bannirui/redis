@@ -554,18 +554,22 @@ void initConfigValues() {
 }
 
 /**
- * @brief 解析配置内容 加载到redisServer实例字段中
- * @param config sds实例 指针指向的是sds的buf数组
+ * 解析配置内容 加载到redisServer实例字段中
+ * @param config sds字符串 指针指向的是sds的buf数组 里面存放的是服务的配置项
  */
 void loadServerConfigFromString(char *config) {
     const char *err = NULL;
+	/**
+	 * totlines sds字符串按照换行符切割出来的子字符串数量 也就是lines这个数组的长度
+	 */
     int linenum = 0, totlines, i;
     int slaveof_linenum = 0;
+	// 字符串数组
     sds *lines;
     int save_loaded = 0;
 
     /**
-     * 以换行符为切割符切割config配置内容
+     * 以换行符为切割符切割sds字符串内容
      * <ul>
      *   <li>切割的子串结果放在lines这个数组里面</li>
      *   <li>切割的子串数量放在totlines中</li>
@@ -573,14 +577,17 @@ void loadServerConfigFromString(char *config) {
      */
     lines = sdssplitlen(config,strlen(config),"\n",1,&totlines);
 
+	// 遍历lines数组
     for (i = 0; i < totlines; i++) {
         sds *argv;
         int argc;
 
         linenum = i+1;
+		// 清除制表符
         lines[i] = sdstrim(lines[i]," \t\r\n");
 
         /* Skip comments and blank lines */
+		// 丢掉注释内容和空白行
         if (lines[i][0] == '#' || lines[i][0] == '\0') continue;
 
         /* Split into arguments */
@@ -822,10 +829,16 @@ loaderr:
  * empty. This way loadServerConfig can be used to just load a file or
  * just load a string. */
 /**
- * 将指定配置地方的配置内容都读取到sds中 然后统一将配置内容加载到redisServer实例的字段中
- * @param filename 配置来源-配置文件(配置文件绝对路径)
- * @param config_from_stdin 配置来源-启动程序时候的命令行参数
- * @param options 配置来源-字符串
+ * 整个redis的配置来源就以下3个地方 逐个找到汇总起来 最后统一将配置内容加载到redisServer实例的成员中
+ * <ul>
+ *   <li>命令启动参数</li>
+ *   <li>命令行键盘键入</li>
+ *   <li>命令行启动参数指定了配置文件</li>
+ * </ul>
+ * 当然了 我相信正常情况下都是用通过指定配置文件的方式来启动程序 形如这种方式<t>./redis-server xxx/redis.conf</t>
+ * @param filename          配置来源-配置文件(配置文件绝对路径)
+ * @param config_from_stdin 配置来源-键盘输入的方式
+ * @param options           配置来源-运行程序时指定的启动参数
  */
 void loadServerConfig(char *filename, char config_from_stdin, char *options) {
     // 缓存配置内容
@@ -836,18 +849,20 @@ void loadServerConfig(char *filename, char config_from_stdin, char *options) {
     /* Load the file content */
     // 文件中配置项读取到config中
     if (filename) {
+	    // 打开文件
         if ((fp = fopen(filename,"r")) == NULL) {
             serverLog(LL_WARNING,
                     "Fatal error, can't open config file '%s': %s",
                     filename, strerror(errno));
             exit(1);
         }
+		// 逐行读出来文件内容追加到config这个字符串中
         while(fgets(buf,CONFIG_MAX_LINE+1,fp) != NULL)
             config = sdscat(config,buf);
         fclose(fp);
     }
     /* Append content from stdin */
-    // 命令行配置读取到config中
+    // 键盘输入的内容读取出来追加到config字符串中
     if (config_from_stdin) {
         serverLog(LL_WARNING,"Reading config from stdin");
         fp = stdin;
@@ -856,12 +871,12 @@ void loadServerConfig(char *filename, char config_from_stdin, char *options) {
     }
 
     /* Append the additional options */
-    // options的字符串内容读取到config中
+    // 启动参数中指定的配置
     if (options) {
         config = sdscat(config,"\n");
         config = sdscat(config,options);
     }
-    // 尝试将配置加载到redisServer实例字段中
+    // 尝试将配置内容加载到redisServer实例的成员中
     loadServerConfigFromString(config);
     sdsfree(config);
 }

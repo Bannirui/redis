@@ -3664,25 +3664,28 @@ void makeThreadKillable(void) {
 }
 
 /**
- * @brief 服务端初始化
- *          - 指定进程遇到信号的处理策略
- *          - 日志设施
- *          - redisServer实例字段赋值
- *          - 创建共享对象
- *          - 创建事件监听器
- *          - 数据库db内存分配
- *          - socket创建监听
- *            - 服务端口
- *            - ssl端口
- *            - UNIX_STREAM
- *          - 初始化数据库
- *          - 注册serverCron函数
- *          - 监听在端口上的socket加到监控列表
- *            - 服务端口
- *            - ssl端口
- *            - unix端口
- *          - 打开aof文件
- *          - 慢日志初始化
+ * 服务端初始化
+ * <ul>
+ *   <li>指定进程遇到信号的处理策略</li>
+ *   <li>日志设施</li>
+ *   <li>redisServer实例字段赋值</li>
+ *   <li>创建共享对象</li>
+ *   <li>创建事件监听器</li>
+ *   <li>数据库db内存分配</li>
+ *   <li>socket创建监听<ul>
+ *     <li>服务端口</li>
+ *     <li>ssl端口</li>
+ *     <li>UNIX_STREAM</li>
+ *   </ul>初始化数据库</li>
+ *   <li>注册serverCron函数</li>
+ *   <li>监听在端口上的socket加到监控列表<ul>
+ *     <li>服务端口</li>
+ *     <li>ssl端口</li>
+ *     <li>unix端口</li>
+ *   </ul></li>
+ *   <li>打开aof文件</li>
+ *   <li>慢日志初始化</li>
+ * </ul>
  */
 void initServer(void) {
     int j;
@@ -3690,6 +3693,11 @@ void initServer(void) {
     /**
      * 忽略SIGHUP信号
      * redis基本上都是以守护进程方式在运行 后台执行的时候不会有控制终端 忽略掉SIGHUP信号
+     * SIGNHUB
+     * <ul>
+     *   <li>Default Action是terminate process</li>
+     *   <li>Description是terminal line hangup</li>
+     * </ul>
      */
     signal(SIGHUP, SIG_IGN);
     /**
@@ -3698,6 +3706,11 @@ void initServer(void) {
      *   - 在写管道发现读进程终止时产生信号
      *   - 写已终止的SOCKET_STREAM套接字同样产生该信号
      * redis作为server 不可避免会遇到各种各样的client client意外终止导致产生的信号也要忽略掉
+     * SIGPIPE
+     * <ul>
+     *   <li>Default Action是terminate process</li>
+     *   <li>Description是write on a pipe with no reader</li>
+     * </ul>
      */
     signal(SIGPIPE, SIG_IGN);
     // 特定信号的处理策略
@@ -6834,8 +6847,103 @@ redisTestProc *getTestProcByName(const char *name) {
  *
  * 主要对server实例中成员进行初始化赋值
  * <ul>
- *   <li>server::umask 系统umask值<li>
- *   <li>server::sentinel_mode 根据启动的redis实例而定<li>
+ *   <li>server::umask                                 系统umask值<li>
+ *   <li>server::sentinel_mode                         根据启动的redis实例而定<li>
+ *   <li>server::unixtime                              系统时间</li>
+ *   <li>server::daylight_active                       0</li>
+ *   <li>server::mstime                                系统时间</li>
+ *   <li>server::runid                                 长度40的随机字符串[0...9 a...f]</li>
+ *   <li>server::replid                                长度40的随机字符串[0...9 a...f]</li>
+ *   <li>server::replid2                               空字符串</li>
+ *   <li>second_replid_offset                          -1</li>
+ *   <li>server::hz                                    10</li>
+ *   <li>server::timezone                              系统时间跟格林威治时间的时区差异多少秒</li>
+ *   <li>server::configfile                            NULL</li>
+ *   <li>server::executable                            NULL</li>
+ *   <li>server::arch_bits                             系统的字宽 32位还是64位</li>
+ *   <li>server::bindaddr_count                        0</li>
+ *   <li>server::unixsocketperm                        0</li>
+ *   <li>server::ipfd::count                           0</li>
+ *   <li>server::tlsfd::count                          0</li>
+ *   <li>server::sofd                                  -1</li>
+ *   <li>server::active_expire_enabled                 1</li>
+ *   <li>server::skip_checksum_validation              0</li>
+ *   <li>server::loading                               0</li>
+ *   <li>server::loading_rdb_used_mem                  0</li>
+ *   <li>server::logfile                               ""</li>
+ *   <li>server::aof_state                             0</li>
+ *   <li>server::aof_rewrite_base_size                 0</li>
+ *   <li>server::aof_rewrite_scheduled                 0</li>
+ *   <li>server::aof_flush_sleep                       0</li>
+ *   <li>server::aof_last_fsync                        系统时间的秒形式</li>
+ *   <li>server::aof_bio_fsync_status                  0</li>
+ *   <li>server::aof_rewrite_time_last                 -1</li>
+ *   <li>server::aof_rewrite_time_start                -1</li>
+ *   <li>server::aof_lastbgrewrite_status              0</li>
+ *   <li>server::aof_delayed_fsync                     0</li>
+ *   <li>server::aof_fd                                -1</li>
+ *   <li>server::aof_selected_db                       -1</li>
+ *   <li>server::aof_flush_postponed_start             0</li>
+ *   <li>server::pidfile                               NULL</li>
+ *   <li>server::active_defrag_running                 0</li>
+ *   <li>server::notify_keyspace_events                0</li>
+ *   <li>server::blocked_clients                       0</li>
+ *   <li>server::blocked_clients_by_type               数组元素全部为0</li>
+ *   <li>server::shutdown_asap                         0</li>
+ *   <li>server::cluster_configfile                    "nodes.conf"</li>
+ *   <li>server::cluster_module_flags                  0</li>
+ *   <li>server::migrate_cached_sockets                dict实例</li>
+ *   <li>server::next_client_id                        1</li>
+ *   <li>server::loading_process_events_interval_bytes 2M</li>
+ *   <li>server::lruclock                              系统时间 秒</li>
+ *   <li>server::saveparams                            数组中3个元素[{60*60, 1}, {300, 100}, {60, 10000}]</li>
+ *   <li>server::saveparamslen                         3</li>
+ *   <li>server::masterauth                            NULL</li>
+ *   <li>server::masterhost                            NULL</li>
+ *   <li>server::masterport                            6379</li>
+ *   <li>server::master                                NULL</li>
+ *   <li>server::cached_master                         NULL</li>
+ *   <li>server::master_initial_offset                 -1</li>
+ *   <li>server::repl_state                            REPL_STATE_NONE(枚举值0)</li>
+ *   <li>server::repl_transfer_tmpfile                 NULL</li>
+ *   <li>server::repl_transfer_fd                      -1</li>
+ *   <li>server::repl_transfer_s                       NULL</li>
+ *   <li>server::repl_syncio_timeout                   5</li>
+ *   <li>server::repl_down_since                       0</li>
+ *   <li>server::master_repl_offset                    0</li>
+ *   <li>server::repl_backlog                          NULL</li>
+ *   <li>server::repl_backlog_histlen                  0</li>
+ *   <li>server::repl_backlog_idx                      0</li>
+ *   <li>server::repl_backlog_off                      0</li>
+ *   <li>server::repl_no_slaves_since                  系统时间(秒)</li>
+ *   <li>server::failover_end_time                     0</li>
+ *   <li>server::force_failover                        0</li>
+ *   <li>server::target_replica_host                   NULL</li>
+ *   <li>server::target_replica_port                   0</li>
+ *   <li>server::failover_state                        NO_FAILOVER枚举值0</li>
+ *   <li>server::client_obuf_limits                    长度为3的数组[{0, 0, 0}, {1024*1024*256, 1024*1024*64, 60}, {1024*1024*32, 1024*1024*8, 60}]</li>
+ *   <li>server::oom_score_adj_value                   长度为3的数组[0, 200, 800]</li>
+ *   <li>server::commands                              所有api</li>
+ *   <li>server::orig_commands                         所有api</li>
+ *   <li>server::delCommand                            命令del</li>
+ *   <li>server::multiCommand                          命令multi</li>
+ *   <li>server::lpushCommand                          命令lpush</li>
+ *   <li>server::lpopCommand                           命令lpop</li>
+ *   <li>server::rpopCommand                           命令rpop</li>
+ *   <li>server::zpopminCommand                        命令zpopmin</li>
+ *   <li>server::zpopmaxCommand                        命令zpopmax</li>
+ *   <li>server::sremCommand                           命令srem</li>
+ *   <li>server::execCommand                           命令exec</li>
+ *   <li>server::expireCommand                         命令expire</li>
+ *   <li>server::pexpireCommand                        命令pexpire</li>
+ *   <li>server::xclaimCommand                         命令xclaim</li>
+ *   <li>server::xgroupCommand                         命令xgroup</li>
+ *   <li>server::rpoplpushCommand                      命令rpoplpush</li>
+ *   <li>server::lmoveCommand                          命令lmove</li>
+ *   <li>server::watchdog_period                       0</li>
+ *   <li>server::lua_always_replicate_commands         1</li>
+ *   <li>server::client_pause_type                     CLIENT_PAUSE_OFF枚举值0</li>
+ *   <li>server::client_pause_end_time                 0</li>
  *   <li>server::<li>
  *   <li>server::<li>
  *   <li>server::<li>
@@ -6988,9 +7096,16 @@ int main(int argc, char **argv) {
 
     /* Store the executable path and arguments in a safe place in order
      * to be able to restart the server later. */
+	// 可执行程序的绝对路径 字符数组形式的字符串转成sds的数据结构
     server.executable = getAbsolutePath(argv[0]);
+	/**
+	 * argv拷贝到server实例上
+	 * 申请一个能容纳argc+1个元素的数组 多一个是预留NUL占位符的
+	 * 数组用来存放argv的运行参数
+	 */
     server.exec_argv = zmalloc(sizeof(char*)*(argc+1));
     server.exec_argv[argc] = NULL;
+	// 字符串拷贝
     for (j = 0; j < argc; j++) server.exec_argv[j] = zstrdup(argv[j]);
 
     /* We need to init sentinel right now as parsing the configuration file
@@ -7009,22 +7124,34 @@ int main(int argc, char **argv) {
      * 检测是否开启RDB和AOF文件检测
      * 这个地方为啥这样做呢
      * 从server入口main函数进来的 执行程序肯定是redis-server 那么它的argv[0]肯定是redis-server啊
+     * strstr是库函数 返回的是在字符串中首次出现子串的位置
+     * <ul>
+     *   <li>当运行的是redis-check-rdb这个可执行程序时 argv[0]是这个可执行文件的绝对路径 因此一定包含redis-check-rdb字符串 意味着检测RDB文件</li>
+     *   <li>当运行的是redis-check-aof这个可执行程序时 argv[0]是这个可执行文件的绝对路径 因此一定包含redis-check-aof字符串 一诶这检测AOF文件</li>
+     * </ul>
      */
-    if (strstr(argv[0],"redis-check-rdb") != NULL) // 运行redis-check-rdb可执行文件
-        redis_check_rdb_main(argc,argv,NULL); // 检测RDB文件
-    else if (strstr(argv[0],"redis-check-aof") != NULL) // 运行redis-check-aof可执行文件
-        redis_check_aof_main(argc,argv); // 检测AOF文件
+    if (strstr(argv[0],"redis-check-rdb") != NULL)
+        redis_check_rdb_main(argc,argv,NULL);
+    else if (strstr(argv[0],"redis-check-aof") != NULL)
+        redis_check_aof_main(argc,argv);
 
-    if (argc >= 2) { // 启动程序带着启动参数 解析启动参数
+	/**
+	 * 程序运行带着的启动参数一定是至少1个的
+	 * 也就是argv[0]一定是当前运行程序绝对路径
+	 * 那么指定的其他的参数就会依次放到argv[1...]里面
+	 *
+	 * 从argv这个数组的1号脚标开始逐个解析出来指定的参数是什么
+	 */
+    if (argc >= 2) {
         j = 1; /* First option to parse in argv[] */
         sds options = sdsempty();
 
         /* Handle special options --help and --version */
         if (strcmp(argv[1], "-v") == 0 ||
-            strcmp(argv[1], "--version") == 0) version();
+            strcmp(argv[1], "--version") == 0) version(); // 第1个运行参数是-v或者--version
         if (strcmp(argv[1], "--help") == 0 ||
-            strcmp(argv[1], "-h") == 0) usage();
-        if (strcmp(argv[1], "--test-memory") == 0) {
+            strcmp(argv[1], "-h") == 0) usage(); // 第1个运行参数是--help或者--h
+        if (strcmp(argv[1], "--test-memory") == 0) { // 第1个运行参数是--test-memory
             if (argc == 3) {
                 memtest(atoi(argv[2]),50);
                 exit(0);
@@ -7038,6 +7165,10 @@ int main(int argc, char **argv) {
          * Precedence wise, File, stdin, explicit options -- last config is the one that matters.
          *
          * First argument is the config file name? */
+		/**
+		 * 想通过命令指定程序的配置文件
+		 * 那么这个配置文件路径必须在第1个参数位置就指定上
+		 */
         if (argv[1][0] != '-') {
             /* Replace the config file in server.exec_argv with its absolute path. */
             // 把配置文件的绝对路径保存下来 下面解析配置文件配置项要用到
@@ -7046,6 +7177,17 @@ int main(int argc, char **argv) {
             server.exec_argv[1] = zstrdup(server.configfile);
             j = 2; // Skip this arg when parsing options
         }
+		/**
+		 * 命令行所有的参数都会被以空格为分隔符且分开
+		 * 每一项都视作argv的元素
+		 * 相当于除了程序本身的绝对路径 后面指定的运行参数都是类似键值对成对出现的
+		 * 约定
+		 * <ul>
+		 *   <li>--后面跟着的作key</li>
+		 *   <li>紧随之后的argv元素作value</li>
+		 *   <li>第一个和最后一个参数仅仅是-符号 就标识要键盘输入的方式键入值</li>
+		 * </ul>
+		 */
         while(j < argc) {
             /* Either first or last argument - Should we read config from stdin? */
             if (argv[j][0] == '-' && argv[j][1] == '\0' && (j == 1 || j == argc-1)) {
@@ -7070,8 +7212,9 @@ int main(int argc, char **argv) {
         /**
          * 解析配置文件配置项
          *   - 启动参数指定的配置文件
-         *   - 启动参数指定的可选参数
-         *   - 启动参数自定义的配置
+         *   - 启动参数指定的可选参数option
+         *   - 键盘键入配置项
+         * 将上述可能存在的配置项都读出来初始化到redisServer的成员中
          */
         loadServerConfig(server.configfile, config_from_stdin, options);
         // 加载哨兵模式的配置项

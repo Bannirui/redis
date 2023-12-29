@@ -33,7 +33,7 @@
 
 /* Node, List, and Iterator are the only data structures used currently. */
 
-// 链表节点
+// 链表节点 双链表
 typedef struct listNode {
     // 前驱节点
     struct listNode *prev;
@@ -43,20 +43,32 @@ typedef struct listNode {
     void *value;
 } listNode;
 
-// 链表迭代器
-// 单向
+/**
+ * 链表的迭代器
+ * 单向
+ * <ul>
+ *   <li>要么是头->尾方向</li>
+ *   <li>要么是尾->头方向</li>
+ * </ul>
+ */
 typedef struct listIter {
-    // 当前迭代位置的下一个节点
+    // 当前迭代位置的后驱节点
     listNode *next;
-    // 标识迭代器方向
+    /**
+     * 标识迭代方向
+     * <ul>
+     *   <li>0 头->尾</li>
+     *   <li>1 尾->头</li>
+     * </ul>
+     */
     int direction;
 } listIter;
 
 // 链表 双链表
 typedef struct list {
-    // 头节点 实节点
+    // 哨兵指针
     listNode *head;
-    // 尾节点 实节点
+    // 哨兵指针
     listNode *tail;
     // 复制函数指针 负责实现链表节点的复制 没有指定就浅拷贝
     void *(*dup)(void *ptr);
@@ -64,7 +76,7 @@ typedef struct list {
     void (*free)(void *ptr);
     // 匹配函数指针 负责搜索链表时匹配链表节点值
     int (*match)(void *ptr, void *key);
-    // 链表长度
+    // 链表长度 链表中挂了多少个节点
     unsigned long len;
 } list;
 
@@ -85,24 +97,42 @@ typedef struct list {
 #define listGetMatchMethod(l) ((l)->match)
 
 /* Prototypes */
-list *listCreate(void); // 创建链表
-void listRelease(list *list); // 链表的释放
-void listEmpty(list *list); // 释放链表上所有节点
-list *listAddNodeHead(list *list, void *value); // 添加元素为链表头节点
-list *listAddNodeTail(list *list, void *value); // 添加元素为链表尾节点
-list *listInsertNode(list *list, listNode *old_node, void *value, int after); // 插入节点
-void listDelNode(list *list, listNode *node); // 删除链表上指定节点
-listIter *listGetIterator(list *list, int direction); // 链表指定方向的迭代器
-listNode *listNext(listIter *iter); // 迭代器内下一个节点
-void listReleaseIterator(listIter *iter); // 释放迭代器
-list *listDup(list *orig); // 复制链表
-listNode *listSearchKey(list *list, void *key); // 关键字搜索节点
-listNode *listIndex(list *list, long index); // 下标索引节点
-void listRewind(list *list, listIter *li); // 重置迭代器 head->tail方向
-void listRewindTail(list *list, listIter *li); // 重置迭代器 tail->head方向
-void listRotateTailToHead(list *list); // 链表tail节点挂成head
-void listRotateHeadToTail(list *list); // 链表head节点挂成tail
-void listJoin(list *l, list *o); // 链表o挂到链表l上
+// 创建链表
+list *listCreate(void);
+// 链表的释放
+void listRelease(list *list);
+// 头链表头开始 正向遍历链表 逐个回收
+void listEmpty(list *list);
+// 新增元素作链表的头节点
+list *listAddNodeHead(list *list, void *value);
+// 新增元素作链表的尾节点
+list *listAddNodeTail(list *list, void *value);
+// 给定参考节点 新增元素到参考节点的前驱或者后继位置
+list *listInsertNode(list *list, listNode *old_node, void *value, int after);
+// 删除链表上指定节点
+void listDelNode(list *list, listNode *node);
+// 创建列表的迭代器
+listIter *listGetIterator(list *list, int direction);
+// 使用迭代器进行遍历
+listNode *listNext(listIter *iter);
+// 回收迭代器
+void listReleaseIterator(listIter *iter);
+// 复制链表
+list *listDup(list *orig);
+// 在链表中检索元素
+listNode *listSearchKey(list *list, void *key);
+// 根据脚标索引链表节点
+listNode *listIndex(list *list, long index);
+// 重置迭代器 从头到尾的方向
+void listRewind(list *list, listIter *li);
+// 重置迭代器 从尾到头的方向
+void listRewindTail(list *list, listIter *li);
+// 尾节点晋升为头节点
+void listRotateTailToHead(list *list);
+// 头节点降级为尾节点
+void listRotateHeadToTail(list *list);
+// 链表o挂到链表l上
+void listJoin(list *l, list *o);
 
 /* Directions for iterators */
 #define AL_START_HEAD 0 // 迭代方向 头->尾

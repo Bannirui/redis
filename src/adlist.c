@@ -112,7 +112,7 @@ void listRelease(list *list)
  * list remains unaltered).
  * On success the 'list' pointer you pass to the function is returned. */
 /**
- * 新增元素作链表的头节点
+ * 新增 头插
  * <ul>
  *   <li>空链表的时候直接初始化为头</li>
  *   <li>头插法</li>
@@ -155,7 +155,7 @@ list *listAddNodeHead(list *list, void *value)
  * list remains unaltered).
  * On success the 'list' pointer you pass to the function is returned. */
 /**
- * 新增元素作链表的尾节点
+ * 新增 尾插
  * <ul>
  *   <li>空链表的时候初始化为节点</li>
  *   <li>尾插法</li>

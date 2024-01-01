@@ -103,9 +103,9 @@ list *listCreate(void);
 void listRelease(list *list);
 // 头链表头开始 正向遍历链表 逐个回收
 void listEmpty(list *list);
-// 新增元素作链表的头节点
+// 新增 头插
 list *listAddNodeHead(list *list, void *value);
-// 新增元素作链表的尾节点
+// 新增 尾插
 list *listAddNodeTail(list *list, void *value);
 // 给定参考节点 新增元素到参考节点的前驱或者后继位置
 list *listInsertNode(list *list, listNode *old_node, void *value, int after);

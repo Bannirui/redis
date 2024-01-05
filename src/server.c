@@ -6944,25 +6944,6 @@ redisTestProc *getTestProcByName(const char *name) {
  *   <li>server::lua_always_replicate_commands         1</li>
  *   <li>server::client_pause_type                     CLIENT_PAUSE_OFF枚举值0</li>
  *   <li>server::client_pause_end_time                 0</li>
- *   <li>server::<li>
- *   <li>server::<li>
- *   <li>server::<li>
- *   <li>server::<li>
- *   <li>server::<li>
- *   <li>server::<li>
- *   <li>server::<li>
- *   <li>server::<li>
- *   <li>server::<li>
- *   <li>server::<li>
- *   <li>server::<li>
- *   <li>server::<li>
- *   <li>server::<li>
- *   <li>server::<li>
- *   <li>server::<li>
- *   <li>server::<li>
- *   <li>server::<li>
- *   <li>server::<li>
- *   <li>server::<li>
  * </ul>
  */
 int main(int argc, char **argv) {

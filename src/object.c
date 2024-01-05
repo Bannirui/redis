@@ -39,11 +39,20 @@
 /* ===================== Creation and parsing of objects ==================== */
 
 /**
- * @brief
- * @param type 数据类型 String List Hash Set ZSet
+ * @param type 数据类型
+ *             <ul>
+ *               <li>String</li>
+ *               <li>List</li>
+ *               <li>Hash</li>
+ *               <li>Set</li>
+ *               <li>ZSet</li>
+ *             </ul>
+ *
  * @param ptr redisObject的ptr指向的就是这个数据的实现
- *              - 对于字符串的编码sds而言 本身sds暴露的指针就是指向自己的buf数组 所以redisObject中的ptr指向的也就是buf数组
- * @return
+ *            <ul>
+ *              <li>对于字符串的编码sds而言 本身sds暴露的指针就是指向自己的buf数组 所以redisObject中的ptr指向的也就是buf数组</li>
+ *            </ul>
+ * @return raw编码的字符串
  */
 robj *createObject(int type, void *ptr) {
     robj *o = zmalloc(sizeof(*o));
@@ -90,15 +99,16 @@ robj *makeObjectShared(robj *o) {
 /* Create a string object with encoding OBJ_ENCODING_RAW, that is a plain
  * string object where o->ptr points to a proper sds string. */
 /**
- * @brief 字符串的编码方式是RAW
- *          - 字符串编码方式是sds
- *          - redisObject的内存布局并不一定跟sds连在一起
+ * 字符串的编码方式是RAW
+ * <ul>
+ *   <li>字符串的数据结构是sds</li>
+ *   <li>字符串的编码方式是raw 意味着redisObject和sds字符串内存布局上不一定连在一起</li>
+ * </ul>
  * @param ptr 字符串的字符数组形式
  * @param len 字符串长度
- * @return
  */
 robj *createRawStringObject(const char *ptr, size_t len) {
-    // 将字符串以sds进行编码
+    // raw型编码的字符串
     return createObject(OBJ_STRING, sdsnewlen(ptr,len));
 }
 
@@ -113,16 +123,18 @@ robj *createRawStringObject(const char *ptr, size_t len) {
  */
 robj *createEmbeddedStringObject(const char *ptr, size_t len) {
     /**
-     * @brief 申请一整片内存
-     *        所谓的EMBSTR是针对长度<=44的字符串 将sds的内存和redisObject的内存连在一起
-     *        因此 整体的内存布局如下
-     *          - redisObject的内存大小
-     *          - sds的内存大小
-     *          - 字符串长度
-     *          - 字符串结束符\0
-     *        sdshdr5存储的字符串长度上限为2^5-1 即31
-     *        而EMBSTR定义的存储字符串长度上限为44
-     *        所以这个地方采用sdshdr8进行编码
+     * 申请一整片内存
+     * 所谓的EMBSTR是针对长度<=44的字符串 将sds的内存和redisObject的内存连在一起
+     * 因此 整体的内存布局如下
+     * <ul>
+     *   <li>redisObject的内存大小</li>
+     *   <li>sds的内存大小</li>
+     *   <li>字符串长度</li>
+     *   <li>字符串结束符\0</li>
+     * </ul>
+     * sdshdr5存储的字符串长度上限为2^5-1 即31
+     * 而EMBSTR定义的存储字符串长度上限为44
+     * 所以这个地方采用sdshdr8进行编码
      */
     robj *o = zmalloc(sizeof(robj)+sizeof(struct sdshdr8)+len+1); // 当前o指针指向的是用来存储redisObject的
     struct sdshdr8 *sh = (void*)(o+1); // sh指针指向的是sds数据结构 该数据结构现在柔性数组buf为空 不占空间 那么sdshdr8就是3byte大小
@@ -159,18 +171,23 @@ robj *createEmbeddedStringObject(const char *ptr, size_t len) {
  * we allocate as EMBSTR will still fit into the 64 byte arena of jemalloc. */
 // EMBSTR编码方式的字符串长度上限 44
 #define OBJ_ENCODING_EMBSTR_SIZE_LIMIT 44
+
 /**
  * @brief 字符串对象
  *        对于字符串而言共3中编码方式
- *           - 编码成整数 整数的字节上限是64bit 反推字符串长度上限就是20
- *           - 编码成sds 根据长度进行选择具体的编码方式 长度临界是44
- *             - 编码成EMBSTR
- *             - 编码成RAW
+ *        <ul>
+ *          <li>编码成整数 整数的字节上限是64bit 反推字符串长度上限就是20</li>
+ *          <li>编码成sds 根据长度进行选择具体的编码方式 长度临界是44<ul>
+ *            <li>编码成EMBSTR</li>
+ *            <li>编码成RAW</li>
+ *          </ul></li>
+ *        </ul>
  * @param ptr 字符串的字符数组形式
  * @param len 字符串长度
- * @return
+ * @return 字符串
  */
 robj *createStringObject(const char *ptr, size_t len) {
+    // 长度阈值44
     if (len <= OBJ_ENCODING_EMBSTR_SIZE_LIMIT)
         return createEmbeddedStringObject(ptr,len); // 字符串长度<=44 编码成EMBSTR
     else
@@ -200,12 +217,17 @@ robj *tryCreateStringObject(const char *ptr, size_t len) {
  * space (for instance when the INCR command is used), so we want LFU/LRU
  * values specific for each key. */
 /**
- * @brief 字符串可以转换成整数 最终也将执行到这个方法
- *        体现的就是字符串的编发方式INT
+ * 整数编码成字符串
+ * <ul>
+ *   <li>要么是int型字符串</li>
+ *   <li>要么是raw型字符串</li>
+ * </ul>
  * @param value 整数
- * @param valueobj 标识是否可以使用共享对象
- *                 0标识可以使用共享对象
- *                 1标识不能用共享对象 相当于要用原型模式创建新对象
+ * @param valueobj 标识对象是否可以共享
+ *                 <ul>
+ *                   <li>0 单例对象</li>
+ *                   <li>1 原型对象</li>
+ *                 </ul>
  * @return
  */
 robj *createStringObjectFromLongLongWithOptions(long long value, int valueobj) {
@@ -219,15 +241,34 @@ robj *createStringObjectFromLongLongWithOptions(long long value, int valueobj) {
         valueobj = 0;
     }
 
-    if (value >= 0 && value < OBJ_SHARED_INTEGERS && valueobj == 0) { // 使用共享对象
+	/**
+	 * 整数对象优先从缓存池中拿
+	 */
+    if (value >= 0 && value < OBJ_SHARED_INTEGERS && valueobj == 0) { // 单例模式
         incrRefCount(shared.integers[value]);
         o = shared.integers[value];
-    } else { // 原型
+    } else { // 原型模式
+	    /**
+	     * int64 bit都不能表达这个整数 那么这个整数长度已经超过了64位
+	     * 字符串有3种编码
+	     * <ul>
+	     *   <li>整数</li>
+	     *   <li>emb</li>
+	     *   <li>raw</li>
+	     * </ul>
+	     * emb的表达长度上限是44 连64位的long整型都表达不了这个数字 就更别提emb了
+	     * 所以整数编码成字符串实质就2种
+	     * <ul>
+	     *   <li>整数</li>
+	     *   <li>raw</li>
+	     * </ul>
+	     */
         if (value >= LONG_MIN && value <= LONG_MAX) { // 整数占用字节64bit 校验极值
             o = createObject(OBJ_STRING, NULL); // 数据类型是String
             o->encoding = OBJ_ENCODING_INT; // 编码方式是INT
             o->ptr = (void*)((long)value); // ptr指向的就是整数
         } else {
+		    // 整数编码成raw字符串
             o = createObject(OBJ_STRING,sdsfromlonglong(value));
         }
     }
@@ -237,6 +278,7 @@ robj *createStringObjectFromLongLongWithOptions(long long value, int valueobj) {
 /* Wrapper for createStringObjectFromLongLongWithOptions() always demanding
  * to create a shared object if possible. */
 robj *createStringObjectFromLongLong(long long value) {
+    // 单例的字符串
     return createStringObjectFromLongLongWithOptions(value,0);
 }
 
@@ -245,6 +287,7 @@ robj *createStringObjectFromLongLong(long long value) {
  * as a value in the key space, and Redis is configured to evict based on
  * LFU/LRU. */
 robj *createStringObjectFromLongLongForValue(long long value) {
+    // 原型字符串
     return createStringObjectFromLongLongWithOptions(value,1);
 }
 
@@ -254,6 +297,13 @@ robj *createStringObjectFromLongLongForValue(long long value) {
  * and the output of snprintf() is not modified.
  *
  * The 'humanfriendly' option is used for INCRBYFLOAT and HINCRBYFLOAT. */
+/**
+ * 浮点数
+ * <ul>
+ *   <li>要么编码成emb</li>
+ *   <li>要么编码成raw</li>
+ * </ul>
+ */
 robj *createStringObjectFromLongDouble(long double value, int humanfriendly) {
     char buf[MAX_LONG_DOUBLE_CHARS];
     int len = ld2string(buf,sizeof(buf),value,humanfriendly? LD_STR_HUMAN: LD_STR_AUTO);
@@ -268,6 +318,16 @@ robj *createStringObjectFromLongDouble(long double value, int humanfriendly) {
  * will always result in a fresh object that is unshared (refcount == 1).
  *
  * The resulting object always has refcount set to 1. */
+/**
+ * 字符串的复制
+ * 字符串3种编码方式
+ * <ul>
+ *   <li>整数</li>
+ *   <li>emb</li>
+ *   <li>raw</li>
+ * </ul>
+ * 根据字符串对象的编码方式复制一个
+ */
 robj *dupStringObject(const robj *o) {
     robj *d;
 

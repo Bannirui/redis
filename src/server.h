@@ -97,6 +97,7 @@ typedef long long ustime_t; /* microsecond time type. */
 #define CRON_DBS_PER_CALL 16
 #define NET_MAX_WRITES_PER_EVENT (1024*64)
 #define PROTO_SHARED_SELECT_CMDS 10
+// [0...10000]的单例对象在缓存池中
 #define OBJ_SHARED_INTEGERS 10000
 #define OBJ_SHARED_BULKHDR_LEN 32
 #define LOG_MAX_LEN    1024 /* Default maximum length of syslog messages.*/
@@ -672,7 +673,10 @@ typedef struct RedisModuleDigest {
 /* Objects encoding. Some kind of objects like Strings and Hashes can be
  * internally represented in multiple ways. The 'encoding' field of the object
  * is set to one of this fields for this object. */
+// raw编码字符串
 #define OBJ_ENCODING_RAW 0     /* Raw representation */
+
+// 整数编码字符串
 #define OBJ_ENCODING_INT 1     /* Encoded as integer */
 #define OBJ_ENCODING_HT 2      /* Encoded as hash table */
 #define OBJ_ENCODING_ZIPMAP 3  /* Encoded as zipmap */
@@ -693,10 +697,47 @@ typedef struct RedisModuleDigest {
 #define OBJ_FIRST_SPECIAL_REFCOUNT OBJ_STATIC_REFCOUNT
 // 16byte
 typedef struct redisObject {
-    // 数据类型
+
+	/**
+	 * unsigned int一共32bit
+	 * <ul>
+	 *   <li>数据结构类型 4bit 最多15种枚举</li>
+	 *   <li>编码方式 4bit 最多15种枚举</li>
+	 *   <li>lru时间戳 24bit</li>
+	 * </ul>
+	 */
+	/**
+	 * 数据结构类型
+	 * <ul>
+	 *   <li>0 字符串</li>
+	 *   <li>1 链表</li>
+	 *   <li>2 set</li>
+	 *   <li>3 zset</li>
+	 *   <li>4 hash</li>
+	 *   <li>5 module</li>
+	 *   <li>6 stream</li>
+	 * </ul>
+	 */
     unsigned type:4;
-    // 数据编码方式
+
+	/**
+	 * 编码方式
+	 * <ul>
+	 *   <li>0 raw</li>
+	 *   <li>1 int</li>
+	 *   <li>2 ht</li>
+	 *   <li>3 zipmap</li>
+	 *   <li>4 linkedlist</li>
+	 *   <li>5 ziplist</li>
+	 *   <li>6 intset</li>
+	 *   <li>7 skiplist</li>
+	 *   <li>8 embstr</li>
+	 *   <li>9 quicklist</li>
+	 *   <li>10 stream</li>
+	 * </ul>
+	 */
     unsigned encoding:4;
+
     /**
      * <p>配合内存淘汰策略使用的</p>
      * <ul>

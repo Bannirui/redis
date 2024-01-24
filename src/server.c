@@ -3777,9 +3777,11 @@ void initServer(void) {
 
     /**
      * 创建监听端口的socket
-     *   - 服务端口6379
-     *   - ssl端口
-     *   - UNIX_STREAM
+     * <ul>
+     *   <li>服务端口6379</li>
+     *   <li>ssl端口</li>
+     *   <li>UNIX_STREAM</li>
+     * </ul>
      */
     /* Open the TCP listening socket for the user commands. */
     // 创建socket监听在服务端口 端口号默认为6379

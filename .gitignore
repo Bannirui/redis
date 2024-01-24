@@ -38,3 +38,7 @@ Makefile.dep
 .ccls-cache/*
 compile_commands.json
 redis.code-workspace
+
+# ctags相关文件
+.cache/
+ctags

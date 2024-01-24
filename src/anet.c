@@ -58,12 +58,23 @@ static void anetSetError(char *err, const char *fmt, ...)
     va_end(ap);
 }
 
+/**
+ * 设置socket的阻塞或者非阻塞的
+ * @param non_block 描述符标志
+ *                  <ul>
+ *                    <li>1 想要socket是非阻塞的</li>
+ *                    <li>0 想要socket是阻塞的</li>
+ *                  </ul>
+ */
 int anetSetBlock(char *err, int fd, int non_block) {
     int flags;
 
     /* Set the socket blocking (if non_block is zero) or non-blocking.
      * Note that fcntl(2) for F_GETFL and F_SETFL can't be
      * interrupted by a signal. */
+	/**
+	 * 获取socket的描述符状态标志
+	 */
     if ((flags = fcntl(fd, F_GETFL)) == -1) {
         anetSetError(err, "fcntl(F_GETFL): %s", strerror(errno));
         return ANET_ERR;
@@ -71,14 +82,25 @@ int anetSetBlock(char *err, int fd, int non_block) {
 
     /* Check if this flag has been set or unset, if so, 
      * then there is no need to call fcntl to set/unset it again. */
+	/**
+	 * 既有的描述符状态标志已经包含了期待的标志 就压根不用2次设置
+	 */
     if (!!(flags & O_NONBLOCK) == !!non_block)
         return ANET_OK;
 
+	/**
+	 * <ul>
+	 *   <li>想要socket是非阻塞的 就把描述符状态标志低位第2位设置成1</li>
+	 *   <li>想要socket是阻塞的 就把描述符状态标志低位第2位设置成0</li>
+	 * </ul>
+	 * 然后再把新的描述符状态标志设置给socket
+	 */
     if (non_block)
         flags |= O_NONBLOCK;
     else
         flags &= ~O_NONBLOCK;
 
+	// 设置新的描述符状态标志给socket
     if (fcntl(fd, F_SETFL, flags) == -1) {
         anetSetError(err, "fcntl(F_SETFL,O_NONBLOCK): %s", strerror(errno));
         return ANET_ERR;
@@ -86,10 +108,16 @@ int anetSetBlock(char *err, int fd, int non_block) {
     return ANET_OK;
 }
 
+/**
+ * 将socket设置为非阻塞式
+ */
 int anetNonBlock(char *err, int fd) {
     return anetSetBlock(err,fd,1);
 }
 
+/**
+ * 将socket设置为阻塞式
+ */
 int anetBlock(char *err, int fd) {
     return anetSetBlock(err,fd,0);
 }
@@ -102,6 +130,7 @@ int anetCloexec(int fd) {
     int flags;
 
     do {
+	    // 读取socket的描述符标志
         r = fcntl(fd, F_GETFD);
     } while (r == -1 && errno == EINTR);
 
@@ -111,6 +140,7 @@ int anetCloexec(int fd) {
     flags = r | FD_CLOEXEC;
 
     do {
+	    // 将新的socket描述符标志设置给socket
         r = fcntl(fd, F_SETFD, flags);
     } while (r == -1 && errno == EINTR);
 

@@ -66,6 +66,13 @@ static inline void resetEventMask(char *eventsMask, int fd) {
     eventsMask[fd/4] &= ~EVENT_MASK_ENCODE(fd, 0x3);
 }
 
+/**
+ * 将事件循环器与系统的多路复用器关联上
+ * <ul>
+ *   <li>linux的epoll</li>
+ *   <li>mac的kqueue</li>
+ * </ul>
+ */
 static int aeApiCreate(aeEventLoop *eventLoop) {
     aeApiState *state = zmalloc(sizeof(aeApiState));
 

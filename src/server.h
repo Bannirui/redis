@@ -1339,7 +1339,12 @@ struct redisServer {
 	 * 命令字典 存放所有暴露给客户端的api命令
 	 */
     dict *orig_commands;        /* Command table before command renaming. */
-    // 事件监听器
+
+	/**
+	 * 事件循环器
+	 * 初始化与server.c::main->initServer
+	 * 初始化为ae实例
+	 */
     aeEventLoop *el;
     rax *errors;                /* Errors table */
 

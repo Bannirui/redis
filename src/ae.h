@@ -151,11 +151,16 @@ typedef struct aeFiredEvent {
 
 /* State of an event based program */
 /**
- * @brief 事件管理器
- *          - 时间事件
- *            - 定时事件
- *            - 周期性事件
- *          - 文件事件
+ * 事件循环器
+ * 首先其本质是一个各种事件的管理器，其次借助系统多路复用器的回调时机有机整合这些事件的执行策略
+ * <ul>
+ *   <li>网络事件 socket</li>
+ *   <li>时间相关事件<ul>
+ *     <li>定时事件事件</li>
+ *     <li>周期性时间事件</li>
+ *   </ul></li>
+ *   <li>其他事件</li>
+ * </ul>
  */
 typedef struct aeEventLoop {
     /**
@@ -171,17 +176,34 @@ typedef struct aeEventLoop {
      * 向事件管理器添加新的时间事件的时候分配一个唯一自增id给它
      */
     long long timeEventNextId;
-    // 文件事件列表 即托管在事件管理器里面的fd
+
+	/**
+	 * 事件列表
+	 * 万物皆文件
+	 * 注册托管到事件循环器中的所有事件得有个记录
+	 */
     aeFileEvent *events; /* Registered events */
-    // 就绪的文件事件列表 IO复用器系统调用的结果存储的地方
+
+	/**
+	 * 网络socket的核心是借助系统多路复用器
+	 * 将系统多路复用器就绪的socket事件拷贝出来放到事件循环器中 跟用户层交互
+	 * 也就是事件循环器屏蔽了用户层跟OS的直接交互
+	 */
     aeFiredEvent *fired; /* Fired events */
+
     /**
-     * @brief 时间事件列表 双链表
-     *          - 定时事件
-     *          - 周期性事件
+     * 时间相关事件列表
+     * 跟时间相关的事件任务分为
+     * <ul>
+     *   <li>定时任务</li>
+     *   <li>周期任务</li>
+     * </ul>
+     * 不管那种细分类型的时间事件都放在这个双链表上 因此肯定会通过链表节点标识这个事件任务是定时任务还是周期任务
      */
     aeTimeEvent *timeEventHead;
+
     int stop;
+
     /**
      * @brief 事件管理器持有OS的多路复用器
      *          - 各个OS对IO多路复用的实现不同

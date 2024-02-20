@@ -161,6 +161,11 @@ typedef struct aeFiredEvent {
  *   </ul></li>
  *   <li>其他事件</li>
  * </ul>
+ * 为了便于区别 姑且将事件循环器中的事件分为两种
+ * <ul>
+ *  <li>IO事件</li>
+ *  <li>非IO事件</li>
+ * </ul>
  */
 typedef struct aeEventLoop {
     /**
@@ -205,12 +210,16 @@ typedef struct aeEventLoop {
     int stop;
 
     /**
-     * @brief 事件管理器持有OS的多路复用器
-     *          - 各个OS对IO多路复用的实现不同
-     *          - 通过aeApiState封装多路复用
-     *          - 事件管理器持有aeApiState实例
+     * 事件循环器的核心所在
+     * 处理socket是核心
+     * 而高效处理socket的手段是利用OS的多路复用器 并且再巧妙借助多路复用器的回调时机巧妙衔接非socket任务
+     * 因此作为一个事件循环器必须得持有一个OS的多路复用器实例
+     * 在java中的方案就是再抽象一个基类 兼容不同系统平台的多路复用器具体实现
+     * 在c中就比较简单 指针的魅力再次体现
+     * 其本质是一样的 只持有多路复用器的实例 并不关注复用器的具体实现
      */
     void *apidata; /* This is used for polling API specific data */
+
     // 回调接口 在可能阻塞发生的IO复用器调用之前 执行回调
     aeBeforeSleepProc *beforesleep;
     // 回调接口 在IO复用器调用之后 执行回调

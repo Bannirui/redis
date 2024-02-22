@@ -42,3 +42,6 @@ redis.code-workspace
 # ctags相关文件
 .cache/
 tags
+
+# cmake的构建目录
+[Bb][Uu][Ii][Ll][Dd]/

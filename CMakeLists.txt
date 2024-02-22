@@ -122,7 +122,7 @@ link_directories(${DEPS_LIB_PATH}/hdr_histogram)
 link_directories(${DEPS_LIB_PATH}/hiredis)
 link_directories(${DEPS_LIB_PATH}/jemalloc)
 link_directories(${DEPS_LIB_PATH}/linenoise)
-link_directories(${DEPS_LIB_PATH}/lua/src)
+link_directories(${DEPS_LIB_PATH}/lua)
 
 add_executable(redis-server ${REDIS_SERVER_SRC})
 

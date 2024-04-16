@@ -1,3 +1,6 @@
 #!/bin/sh
 
-cmake -S . -B build
+cmake \
+  -G "Unix Makefiles" \
+  -S . \
+  -B build

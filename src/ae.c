@@ -48,6 +48,14 @@
 
 /* Include the best multiplexing layer supported by this system.
  * The following should be ordered by performances, descending. */
+/**
+ * 不同的系统平台有不同的多路复用器的实现
+ * <ul>
+ *   <li>linux的epoll</li>
+ *   <li>macos的kqueue</li>
+ *   <li>windows的select</li>
+ * </ul>
+ */
 #ifdef HAVE_EVPORT
 #include "ae_evport.c"
 #else
@@ -64,9 +72,9 @@
 
 
 /**
- * @brief 创建事件管理器
- * @param setsize 指定事件管理器的容量
- * @return
+ * 创建事件循环管理器
+ * @param setsize 指定事件循环管理器的容量
+ * @return 事件循环管理器
  */
 aeEventLoop *aeCreateEventLoop(int setsize) {
     aeEventLoop *eventLoop;
@@ -74,32 +82,39 @@ aeEventLoop *aeCreateEventLoop(int setsize) {
 
     monotonicInit();    /* just in case the calling app didn't initialize */
 
-    if ((eventLoop = zmalloc(sizeof(*eventLoop))) == NULL) goto err; // 内存开辟
-    eventLoop->events = zmalloc(sizeof(aeFileEvent)*setsize); // 未就绪文件事件列表
-    eventLoop->fired = zmalloc(sizeof(aeFiredEvent)*setsize); // 就绪文件事件列表
+	// 内存开辟
+    if ((eventLoop = zmalloc(sizeof(*eventLoop))) == NULL) goto err;
+	// 数组内存开辟 用来存放需要注册到多路复用器的事件
+    eventLoop->events = zmalloc(sizeof(aeFileEvent)*setsize);
+	// 数组内存开辟 用来存放从多路复用器返回的就绪事件集合
+    eventLoop->fired = zmalloc(sizeof(aeFiredEvent)*setsize);
     if (eventLoop->events == NULL || eventLoop->fired == NULL) goto err;
-    eventLoop->setsize = setsize; // 事件管理的容量
-    eventLoop->timeEventHead = NULL; // 时间事件链表
+	// 事件循环管理器容量
+    eventLoop->setsize = setsize;
+    eventLoop->timeEventHead = NULL;
     eventLoop->timeEventNextId = 0;
     eventLoop->stop = 0;
     eventLoop->maxfd = -1;
     eventLoop->beforesleep = NULL;
     eventLoop->aftersleep = NULL;
     eventLoop->flags = 0;
-    /**
-     * @brief 将系统os多路复用IO与事件管理器关联起来
-     *          - 将OS多路复用封装成aeApiState接口
-     *          - 事件管理器持有aeApiSate的实例 这样就屏蔽了OS对多路复用的实现差异
-     */
+	/**
+	 * 创建系统的多路复用器实例
+	 * 系统平台有差异 每个系统的多路复用器实现有差异 这样就可以屏蔽对用户的实现差异
+	 */
     if (aeApiCreate(eventLoop) == -1) goto err; // 我是很喜欢goto关键字的 新语言go中也使用了这个关键字 很难理解Java中竟然没有这个机制
     /* Events with mask == AE_NONE are not set. So let's initialize the
      * vector with it. */
+	/**
+	 * malloc分配的内存未初始化
+	 * 防止以后引起状态误判 这个地方进行事件状态初始化
+	 */
     for (i = 0; i < setsize; i++)
-        eventLoop->events[i].mask = AE_NONE; // 标记未就绪事件的状态为还没注册到复用器上 意味着删除这个事件的时候可以直接删除 不用再将其从IO复用器上删除掉
+        eventLoop->events[i].mask = AE_NONE;
     return eventLoop;
 
 err:
-    if (eventLoop) { // 资源回收
+    if (eventLoop) {
         zfree(eventLoop->events);
         zfree(eventLoop->fired);
         zfree(eventLoop);
@@ -108,11 +123,17 @@ err:
 }
 
 /* Return the current set size. */
+/**
+ * getter方法 事件循环器的容量
+ */
 int aeGetSetSize(aeEventLoop *eventLoop) {
     return eventLoop->setsize;
 }
 
 /* Tells the next iteration/s of the event processing to set timeout of 0. */
+/**
+ * flags位状态标识不同的能力项
+ */
 void aeSetDontWait(aeEventLoop *eventLoop, int noWait) {
     if (noWait)
         eventLoop->flags |= AE_DONT_WAIT;
@@ -127,30 +148,48 @@ void aeSetDontWait(aeEventLoop *eventLoop, int noWait) {
  * performed at all.
  *
  * Otherwise AE_OK is returned and the operation is successful. */
+/**
+ * setter方法 设置事件循环器的容量 使用场景是扩大容量
+ * @param setsize 期待将事件循环器设置到多大的容量
+ * @return 状态码
+ *         <ul>
+ *           <li>0 标识成功</li>
+ *           <li>-1 标识失败</li>
+ *         </ul>
+ */
 int aeResizeSetSize(aeEventLoop *eventLoop, int setsize) {
     int i;
 
     if (setsize == eventLoop->setsize) return AE_OK;
     if (eventLoop->maxfd >= setsize) return AE_ERR;
+	// 扩大盛放多路复用器就绪事件的数组大小
     if (aeApiResize(eventLoop,setsize) == -1) return AE_ERR;
 
+	// 扩大两个数组 events数组和fired数组
     eventLoop->events = zrealloc(eventLoop->events,sizeof(aeFileEvent)*setsize);
     eventLoop->fired = zrealloc(eventLoop->fired,sizeof(aeFiredEvent)*setsize);
     eventLoop->setsize = setsize;
 
     /* Make sure that if we created new slots, they are initialized with
      * an AE_NONE mask. */
+	/**
+	 * 扩容的events数组中内存需要初始化
+	 */
     for (i = eventLoop->maxfd+1; i < setsize; i++)
         eventLoop->events[i].mask = AE_NONE;
     return AE_OK;
 }
 
+/**
+ * 内存回收
+ */
 void aeDeleteEventLoop(aeEventLoop *eventLoop) {
     aeApiFree(eventLoop);
     zfree(eventLoop->events);
     zfree(eventLoop->fired);
 
     /* Free the time events list. */
+	// 链表内存的回收 轮询链表节点逐个释放
     aeTimeEvent *next_te, *te = eventLoop->timeEventHead;
     while (te) {
         next_te = te->next;
@@ -160,30 +199,46 @@ void aeDeleteEventLoop(aeEventLoop *eventLoop) {
     zfree(eventLoop);
 }
 
+/**
+ * setter方法 设置stop标识符
+ */
 void aeStop(aeEventLoop *eventLoop) {
     eventLoop->stop = 1;
 }
 
 /**
- * @brief 将fd以及对fd关注的IO事件类型封装成文件事件 添加到事件管理器中
- * @param eventLoop 事件管理器
- * @param fd
- * @param mask 要监听fd的什么类型IO事件(可读\可写)
- * @param proc 处理器 当感兴趣的事件类型(可读\可写)到达时回调
- * @param clientData 文件事件的私有数据
- * @return
+ * 将fd以及对fd关注的IO事件类型封装IO任务 添加到事件管理器中
+ * @param mask 要监听fd的什么类型IO事件 可读还是可写
+ *             <ul>
+ *               <li>1 监听可读事件</li>
+ *               <li>2 监听可写事件</li>
+ *             </ul>
+ * @param proc 处理器 将来借助多路复用器发现fd事件状态就绪时可以找个合适的时机进行回调
+ * @param clientData 回调的时候可能需要处理一些数据 将数据维护在eventLoop中供将来使用
+ * @return 状态码
+ *         <ul>
+ *           <li>-1 标识失败</li>
+ *           <li>0 标识成功</li>
+ *         </ul>
  */
 int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,
         aeFileProc *proc, void *clientData)
 {
-    if (fd >= eventLoop->setsize) { // fd超过了事件管理器的预设极值了
+    // 边界校验 fd要当作events数组的脚标使用 不能越界
+    if (fd >= eventLoop->setsize) {
         errno = ERANGE;
         return AE_ERR;
     }
     // fd就是脚标索引 在未就绪数组中找到对应位置 完成初始化
     aeFileEvent *fe = &eventLoop->events[fd];
 
-    // 将fd注册到多路复用器上 指定监听fd的事件mask
+	/**
+     * 将fd注册到多路复用器上 指定监听fd的事件类型
+     * <ul>
+     *   <li>1 监听可读事件</li>
+     *   <li>2 监听可写事件</li>
+     * </ul>
+	 */
     if (aeApiAddEvent(eventLoop, fd, mask) == -1)
         return AE_ERR;
     // 记录fd关注的事件类型
@@ -191,7 +246,9 @@ int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,
     // fd可读可写时指定回调的处理器
     if (mask & AE_READABLE) fe->rfileProc = proc;
     if (mask & AE_WRITABLE) fe->wfileProc = proc;
-    // 事件的私有数据
+    /**
+     * 给回调函数使用
+     */
     fe->clientData = clientData;
     if (fd > eventLoop->maxfd)
         eventLoop->maxfd = fd;
@@ -199,40 +256,54 @@ int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,
 }
 
 /**
- * @brief 告知事件管理器 让其移除对fd关注的IO事件类型 关注的事件移除光了就将文件事件从事件管理器中逻辑删除
- * @param eventLoop 事件管理器
- * @param fd
- * @param mask 需要IO复用器移除对什么IO事件类型的关注
+ * 告知事件管理器 让其移除对fd关注的IO事件类型 关注的事件移除光了就将文件事件从事件管理器中逻辑删除
+ * @param eventLoop 事件循环管理器
+ * @param mask 移除什么类型的事件监听
+ *             <ul>
+ *               <li>1 可读事件</li>
+ *               <li>2 可写事件</li>
+ *             </ul>
  */
 void aeDeleteFileEvent(aeEventLoop *eventLoop, int fd, int mask)
 {
+    // 边界校验
     if (fd >= eventLoop->setsize) return;
-    // 索引到文件事件
+    // 以fd为数组脚标从events数组中索引到事件体
     aeFileEvent *fe = &eventLoop->events[fd];
-    if (fe->mask == AE_NONE) return; // 事件并没有注册过IO复用器
+	// 事件状态还是初始化的状态
+    if (fe->mask == AE_NONE) return;
 
     /* We want to always remove AE_BARRIER if set when AE_WRITABLE
      * is removed. */
     /**
      * 要移除fd上对可写IO事件的关注
-     * 意思打上标记 暂缓处理
-     * 比如有个场景 现在该socket已经可写 并且mask掩码也只有可写
-     *   - 先告诉IO复用器以后不用关注socket的可写事件了
-     *   - 然后文件事件更新完mask之后变成了0
-     *   - 事件管理器eventLoop将这个fd的文件事件标记为了AE_NONE
-     * 紧接着遇到了对事件的处理函数调用 就错过对本来可写的socket执行一次写操作
-     * 因此这个地方用BARRIER标记着 给socket一个写机会
+     * 这行代码想了好久没有想明白 现在的猜想是
+     * AE_BARRIER的标识是用来将来收到IO事件就绪通知时 干预正常的先读后写顺序为先写后读
+     * 现在既然都要移除对可写事件的关注了 也就是将来并不想继续对fd进行写操作了 也就自然不必要干预读写顺序了
      */
     if (mask & AE_WRITABLE) mask |= AE_BARRIER;
 
-    // 从IO复用器上移除对fd的某个或者某些IO事件类型的关注
+	/**
+	 * 让多路复用器移除监听事件状态
+	 * <ul>
+	 *   <li>1 移除对可读事件的监听</li>
+	 *   <li>2 移除对可写事件的监听</li>
+	 * </ul>
+	 */
     aeApiDelEvent(eventLoop, fd, mask);
-    // IO复用器更新完成 更新mask掩码
+	/**
+	 * 更新对fd关注的事件类型
+	 * <ul>
+	 *   <li>关注IO的可读</li>
+	 *   <li>关注IO的可写</li>
+	 *   <li>关注IO的读写顺序 强制先写后读的顺序</li>
+	 * <ul>
+	 */
     fe->mask = fe->mask & (~mask);
-    if (fd == eventLoop->maxfd && fe->mask == AE_NONE) { // fd对应的文件事件 关注的IO事件类型都已经移除光了 相当于从eventLoop事件管理器里面删除了该fd
+	// 更新最大的fd 一旦fd上监听着的事件都被移除光了 那么fd在逻辑上也就被删除了
+    if (fd == eventLoop->maxfd && fe->mask == AE_NONE) {
         /* Update the max fd */
         int j;
-
         for (j = eventLoop->maxfd-1; j >= 0; j--)
             if (eventLoop->events[j].mask != AE_NONE) break;
         eventLoop->maxfd = j;
@@ -240,10 +311,13 @@ void aeDeleteFileEvent(aeEventLoop *eventLoop, int fd, int mask)
 }
 
 /**
- * @brief 某个fd关注的IO事件类型 也就是注册在IO复用器上 等待的事件类型
+ * 注册在多路复用器上监听着的事件类型是什么
  * @param eventLoop 事件管理器
- * @param fd
- * @return 调用方根据不同的IO事件类型掩码计算
+ * @return 监听着的事件状态 要监听fd的什么事件类型
+ *         <ul>
+ *           <li>1 可读事件</li>
+ *           <li>2 可写事件</li>
+ *         </ul>
  */
 int aeGetFileEvents(aeEventLoop *eventLoop, int fd) {
     if (fd >= eventLoop->setsize) return 0;
@@ -253,40 +327,39 @@ int aeGetFileEvents(aeEventLoop *eventLoop, int fd) {
 }
 
 /**
- * @brief 创建一个时间事件加到事件管理器eventLoop上
- * @param eventLoop 事件管理器
- * @param milliseconds 期待事件在多久之后被调度执行 毫秒
- * @param proc 事件处理器 定义了时间事件被调度起来之后如何执行
- * @param clientData 时间事件的私有数据
- * @param finalizerProc 时间事件的析构处理器 用于回收资源
- * @return 事件的id
+ * 注册一个定时任务到eventLoop中
+ * @param milliseconds 期望定时任务在多久之后被调度执行 毫秒
+ * @param proc 事件处理器 定义了定时任务被调度起来之后如何执行 回调函数
+ * @param clientData 回调函数执行的时候可能需要一些数据 可以通过这样的方式传递
+ * @param finalizerProc 定时任务的的析构处理器 用于回收资源
+ * @return 事件的id -1标识失败
  */
 long long aeCreateTimeEvent(aeEventLoop *eventLoop, long long milliseconds,
         aeTimeProc *proc, void *clientData,
         aeEventFinalizerProc *finalizerProc)
 {
+    // 给定时任务分配id
     long long id = eventLoop->timeEventNextId++;
-    // 新建一个时间事件
     aeTimeEvent *te;
 
     te = zmalloc(sizeof(*te));
     if (te == NULL) return AE_ERR;
-    // 事件的id
+    // 定时任务的id
     te->id = id;
-    // 记录事件理论应该被调度执行的时间
+    // 记录定时任务理论应该被调度执行的时间
     te->when = getMonotonicUs() + milliseconds * 1000;
-    // 事件处理器
+    // 定时任务处理器
     te->timeProc = proc;
-    // 事件的析构处理器
+    // 定时任务的析构处理器
     te->finalizerProc = finalizerProc;
-    // 事件的私有数据
+    // 回到函数执行的时候可能需要一些数据
     te->clientData = clientData;
     te->prev = NULL;
     /**
-     * 新创建的时间事件头插到timeEventHead双链表上
-     * 由此可见redis对于时间事件的管理很简单
+     * 定时任务头插到timeEventHead双链表上
+     * 由此可见redis对于定时任务的管理很简单
      * 将来采用的查找策略也只能是轮询
-     * 变向说明redis中管理的时间事件基数很小很小
+     * 变向说明redis中管理的定时任务基数很小
      */
     te->next = eventLoop->timeEventHead;
     te->refcount = 0;
@@ -297,22 +370,25 @@ long long aeCreateTimeEvent(aeEventLoop *eventLoop, long long milliseconds,
 }
 
 /**
- * @brief 根据时间事件的唯一id 将该事件从事件管理器中移除
- *        删除是逻辑删除 将待删除的事件id置为特定标记
- * @param eventLoop 事件管理器
- * @param id 时间事件id
+ * 根据定时任务的唯一id 将该定时任务从事件管理器中移除
+ * 删除是逻辑删除 将待删除的事件id置为特定标记 id标识为-1
+ * 等待以后轮询使用定时任务的时候扫描到id是-1的再进行删除操作
+ * @param id 定时任务id 定时任务的唯一标识
  * @return 操作状态码
- *         0-标识成功
- *         -1-标识失败
+ *         <ul>
+ *           <li>0 标识成功</li>
+ *           <li>-1 标识失败</li>
+ *         </ul>
  */
 int aeDeleteTimeEvent(aeEventLoop *eventLoop, long long id)
 {
-    // 事件管理器中的时间事件链表
+    // 链表
     aeTimeEvent *te = eventLoop->timeEventHead;
-    // 轮询链表节点 找到要删除的目标节点
+    // 轮询链表 找到要删除的目标节点
     while(te) {
         if (te->id == id) {
-            te->id = AE_DELETED_EVENT_ID; // 标记该事件被删除
+		    // 打上删除标记即可 真正的移除操作延迟到使用的时候
+            te->id = AE_DELETED_EVENT_ID;
             return AE_OK;
         }
         te = te->next;
@@ -330,21 +406,25 @@ int aeDeleteTimeEvent(aeEventLoop *eventLoop, long long id)
  * 2) Use a skiplist to have this operation as O(1) and insertion as O(log(N)).
  */
 /**
- * @brief 考察时间事件中最早可以被调度的某个事件 还要多久
- *        这种一般都是在某个阻塞点之前 然后那个阻塞点可以根据最早应该被调度起来的时间进行阻塞
- * @param eventLoop
- * @return
- *         -1-标识没有时间事件
- *         0-还要等0微秒可以调度某个时间事件执行
- *         n-还要等n微秒可以调度某个时间事件执行
+ * 考察定时任务中最早可以被调度的某个定时任务 还要多久
+ * 这种一般都是在某个阻塞点之前
+ * 先计算出最早可以调度的定时任务 比如需要等待n时间
+ * 比如阻塞点是多路复用器的poll系统调用 让阻塞点以timeout的方式执行
+ * 这样即使poll的唤醒最坏情况是阻塞n 唤醒之后调度起来待执行的定时任务
+ * 最大化地利用了cpu资源
+ * @return 还有多久(单位微秒)待执行定时任务
+ *         <ul>
+ *           <li>-1 标识没有定时任务待执行</li>
+ *           <li>x 标识某个定时任务等待x微秒待调度</li>
+ *         </ul>
  */
 static int64_t usUntilEarliestTimer(aeEventLoop *eventLoop) {
-    // 时间事件链表头节点
+    // 定时任务的链表
     aeTimeEvent *te = eventLoop->timeEventHead;
-    // 事件管理器中没有时间事件
+    // 链表为空的情况
     if (te == NULL) return -1;
 
-    // 轮询链表 找到链表节点中 最早要被调度执行的时间事件
+    // 轮询链表 找到链表节点中最早要被调度执行的定时任务
     aeTimeEvent *earliest = NULL;
     while (te) {
         if (!earliest || te->when < earliest->when)
@@ -358,30 +438,52 @@ static int64_t usUntilEarliestTimer(aeEventLoop *eventLoop) {
 
 /* Process time events */
 /**
- * @brief 调度时间事件
- * @param eventLoop 事件管理器
- * @return 一轮处理中调度的事件数量
+ * 调度定时任务的执行
+ * <ul>
+ *   <li>执行物理删除定时任务的时机</li>
+ *   <li>调度可以执行的定时任务<ul>
+ *     <li>一次性定时任务执行完打上逻辑删除标识</li>
+ *     <li>周期性定时任务执行完更新下一次调度时机</li>
+ *   </ul>
+ *   </li>
+ * </ul>
+ * @return 在这一轮处理中调度起来的定时任务数量
  */
 static int processTimeEvents(aeEventLoop *eventLoop) {
-    // 统计调度了多少个事件执行
+    // 统计调度了多少个定时任务执行
     int processed = 0;
     aeTimeEvent *te;
     long long maxId;
 
-    // 轮询事件管理器中的时间事件链表
+    // 链表
     te = eventLoop->timeEventHead;
+	/**
+	 * 当前定时任务的最大id
+	 * 在遍历链表的时候发现链表节点上挂着的定时任务id大于了maxId 就说明这个节点是在轮询动作之后新增的
+	 * maxId相当于在链表轮询之前给链表数据状况打了个快照
+	 * 这种场景是不可能发生的 因为链表的挂载方式是头插法 即使有新增的链表节点加进来 也是加在了头节点之前 不可能遇到
+	 */
     maxId = eventLoop->timeEventNextId-1;
     monotime now = getMonotonicUs();
     while(te) {
         long long id;
 
         /* Remove events scheduled for deletion. */
-        if (te->id == AE_DELETED_EVENT_ID) { // 已经被标记逻辑删除了 尝试将需要删除的节点进行清理删除
+		/**
+		 * 惰性删除的体现
+		 * 当初提供删除定时任务的api并没有执行物理删除 仅仅是把id打成了-1标识 逻辑删除
+		 * 现在这个场景遍历使用定时任务 发现id为-1的判定为删除状态的节点 进行真正的删除判定
+		 */
+        if (te->id == AE_DELETED_EVENT_ID) {
             aeTimeEvent *next = te->next;
             /* If a reference exists for this timer event,
              * don't free it. This is currently incremented
              * for recursive timerProc calls */
-            if (te->refcount) { // 链表节点还不能直接删除 还在被引用着
+			/**
+			 * 这个引用计数是该定时任务正在被调度执行的次数 也就是定时任务还在运行中 不能删除
+			 * 继续把删除动作延迟 放到以后的某个时机再去删除
+			 */
+            if (te->refcount) {
                 te = next;
                 continue;
             }
@@ -392,6 +494,7 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
                 eventLoop->timeEventHead = te->next;
             if (te->next)
                 te->next->prev = te->prev;
+			// 准备回收te 执行回调 定制化处理析构逻辑
             if (te->finalizerProc) {
                 te->finalizerProc(eventLoop, te->clientData);
                 now = getMonotonicUs();
@@ -406,25 +509,47 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
          * add new timers on the head, however if we change the implementation
          * detail, this check may be useful again: we keep it here for future
          * defense. */
-        // 注释说是防御性编程 当前链表是头插法 不可能出现遍历到的节点是新添加的节点
+		/**
+		 * 对于正常的定时任务 就是那些id!=-1的
+		 * 在遍历这个链表之前已经给id的上限打了个快照maxId 也就是说在遍历过程中不可能遇到某个节点的id是>maxId的
+		 * 这个地方单纯低防御性编程
+		 */
         if (te->id > maxId) {
             te = te->next;
             continue;
         }
 
-        if (te->when <= now) { // 链表上遍历到的某个节点已经可以被调度执行
+		/**
+		 * 找到可以被调度的定时任务
+		 */
+        if (te->when <= now) {
             int retval;
 
             id = te->id;
+			// 标识定时任务正在执行中 事件被调度执行的次数
             te->refcount++;
-            retval = te->timeProc(eventLoop, id, te->clientData); // 回调处理器对事件进行处理
+			/**
+			 * 回调函数 调度执行定时任务
+			 * 执行完毕之后根据回调函数的返回值界定该定时任务是不是周期性定时任务
+			 * <ul>
+			 *   <li>-1 标识一次性事件</li>
+			 *   <li></li>
+			 * </ul>
+			 */
+            retval = te->timeProc(eventLoop, id, te->clientData);
+			// 释放计数 让将来的物理删除事件得以正常进行下去
             te->refcount--;
-            processed++; // 调度了事件数量计数
+			// 更新调度计数
+            processed++;
             now = getMonotonicUs();
-            if (retval != AE_NOMORE) { // 是个周期性事件 更新期待被下一轮调度的事件
-                // 期待下次被调度执行的时间 微秒
+			/**
+			 * 周期性定时任务要更新下一次调度时机
+			 * 回调函数的返回值语义是retval秒后
+			 */
+            if (retval != AE_NOMORE) {
                 te->when = now + retval * 1000;
-            } else { // 标识时间事件不是周期性事件 调度过一次就删除 在这个地方打上待删除标记 下一次遍历到的时候真正尝试删除操作
+            } else {
+			    // 一次性定时任务执行完毕后打上逻辑删除标识 等着下一次执行物理删除的时机
                 te->id = AE_DELETED_EVENT_ID;
             }
         }
@@ -448,26 +573,39 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
  * if flags has AE_CALL_BEFORE_SLEEP set, the beforesleep callback is called.
  *
  * The function returns the number of events processed. */
-/**
- * @brief 事件管理器调度
- * @param eventLoop 事件管理器
- * @param flags 调度策略
- *                - 0 不调度
- * @return 调度的事件数量
- *         包含
- *           - 时间事件
- *           - 文件事件
- */
+ /**
+  * 调度任务
+  * <ul>既包含(网络)IO任务也包含定时任务
+  *   <li>IO事件托管给系统多路复用器</li>
+  *   <li>定时任务自己维护调度策略</li>
+  * </ul>
+  * @param flags 调度策略 看位信息
+  *              <ul>
+  *                <li>1 调度IO任务</li>
+  *                <li>2 调度定时任务</li>
+  *                <li>3 调度IO任务和定时任务</li>
+  *                <li>4 非阻塞式调用多路复用器</li>
+  *                <li>8 在多路复用器阻塞前执行回调</li>
+  *                <li>16 在多路复用器阻塞唤醒后执行回调</li>
+  *              </ul>
+  * @return 总共调度了多少个任务
+  *         <ul>
+  *           <li>IO任务</li>
+  *           <li>定时任务</li>
+  *         </ul>
+  */
 int aeProcessEvents(aeEventLoop *eventLoop, int flags)
 {
     int processed = 0, numevents;
 
     /* Nothing to do? return ASAP */
     /**
-     * 事件管理器eventLoop中只有2种类型的事件
-     *   - 文件事件AE_FILE_EVENTS
-     *   - 时间事件AE_TIME_EVENTS
-     * 调度策略里面2种类型都不调度 直接结束调度流程
+     * 事件管理器eventLoop中只管理有2种类型的任务
+     * <ul>
+     *   <li>IO任务</li>
+     *   <li>定时任务 又分为一次性定时任务和周期性定时任务</li>
+     * </ul>
+     * 参数校验需要调度IO任务还是定时任务
      */
     if (!(flags & AE_TIME_EVENTS) && !(flags & AE_FILE_EVENTS)) return 0;
 
@@ -475,31 +613,45 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
      * file events to process as long as we want to process time
      * events, in order to sleep until the next time event is ready
      * to fire. */
-    /**
-     * if分支
-     *   - maxfd!=-1意味着有文件事件
-     *   - 对时间事件进行调度
-     * 如果eventLoop中只管理着时间事件 并且客户端指定了调度策略是DONT_WAIT 那么直接不进if分支
-     *   - 首先时间事件大概率会需要阻塞一段时间等到执行时机
-     *   - 那么这个阻塞时间不会浪费 而是用来阻塞等待IO复用器的系统调用
-     *   - 但是eventLoop管理器只管理着时间事件 所以陷入系统调用后也不会有文件事件就绪
-     *   - 说白了这个阻塞时间是被白白浪费的
-     *   - 所以不进if分支 直接单独调度一次时间事件
-     */
+	/**
+	 * 这个条件判断是什么意思
+	 * <ul>
+	 *   <li>IO任务的maxfd!=-1意味着eventLoop管理者IO任务</li>
+	 *   <li>调度策略指定<ul>
+	 *     <li>需要调度定时任务</li>
+	 *     <li>需要利用多路复用器的超时阻塞机制</li></ul>
+	 *   </li>
+	 * </ul>
+	 * 也就是说多路复用器的机制和能力被用于
+	 * <ul>
+	 *   <li>注册IO事件到系统多路复用器上 多路复用器管理和告知用户就绪事件</li>
+	 *   <li>利用多路复用器的超时阻塞机制实现精准定时功能</li>
+	 * </ul>
+	 * 这个if判断就是看看是不是需要使用多路复用器
+	 */
     if (eventLoop->maxfd != -1 ||
         ((flags & AE_TIME_EVENTS) && !(flags & AE_DONT_WAIT))) {
         int j;
         struct timeval tv, *tvp;
         int64_t usUntilTimer = -1;
 
+		/**
+		 * 调度策略
+		 * <ul>
+		 *   <li>需要调度IO任务</li>
+		 *   <li>需要多路复用器的超时阻塞功能</li>
+		 * </ul>
+		 * 计算出最近一次的定时任务需要被调度的时机 最大化执行效率
+		 * 最坏的情况就是 多路复用器没有就绪的事件 一直到超时时间才从阻塞中唤醒 然后这个时机无缝衔接开始调度普通任务
+		 */
         if (flags & AE_TIME_EVENTS && !(flags & AE_DONT_WAIT))
-            usUntilTimer = usUntilEarliestTimer(eventLoop); // 本次调度对时间事件是关注的 距离最近的一个时间事件应该被调度起来还有usUntilTimer微秒
+            usUntilTimer = usUntilEarliestTimer(eventLoop);
 
-        if (usUntilTimer >= 0) { // 还要等多久可以调度时间事件
+        if (usUntilTimer >= 0) {
             tv.tv_sec = usUntilTimer / 1000000;
             tv.tv_usec = usUntilTimer % 1000000;
             tvp = &tv;
-        } else { // 时间事件已经就绪 可以被立即调度
+        } else {
             /* If we have to check for events but need to return
              * ASAP because of AE_DONT_WAIT we need to set the timeout
              * to zero */
@@ -511,38 +663,48 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
                 tvp = NULL; /* wait forever */
             }
         }
-
+		// 多路复用器poll的timeout是0
         if (eventLoop->flags & AE_DONT_WAIT) {
             tv.tv_sec = tv.tv_usec = 0;
             tvp = &tv;
         }
 
+		// 多路复用器poll调用之前 执行回调的时机
         if (eventLoop->beforesleep != NULL && flags & AE_CALL_BEFORE_SLEEP)
-            eventLoop->beforesleep(eventLoop); // IO复用器阻塞前 回调
+            eventLoop->beforesleep(eventLoop);
 
         /* Call the multiplexing API, will return only on timeout or when
          * some event fires. */
         /**
-         * 带超时调用IO复用器
-         *   - 要么在指定阻塞时间tvp之前就有就绪Socket发生
-         *   - 要么经过tvp阻塞都没有就绪Socket
-         *   - 要么指定的是永久阻塞知道有就绪Socket
-         * 这样设计的根因在于兼顾时间事件的处理 提高整个系统的吞吐
-         *
-         * 发生一次系统调用 numevents个fd就绪 就绪的fd被放在了eventLoop的fired就绪数组里面
+         * 发起多路复用器的poll调用
+         * 根据tvp超时标识实现阻塞与否以及控制超时时间是多久
+         * <ul>
+         *   <li>tvp是null 标识阻塞式调用 直到有就绪事件</li>
+         *   <li>tvp是0 相当于立马返回 非阻塞式调用</li>
+         *   <li>tvp非0 阻塞相应时间</li>
+         * </ul>
+         * 这样设计的根因在于兼顾定时任务的处理 提高整个系统的吞吐
          */
         numevents = aeApiPoll(eventLoop, tvp);
 
         /* After sleep callback. */
+		// 多路复用器poll调用之后 执行回调的时机
         if (eventLoop->aftersleep != NULL && flags & AE_CALL_AFTER_SLEEP)
-            eventLoop->aftersleep(eventLoop); // IO复用器阻塞后 回调
+            eventLoop->aftersleep(eventLoop);
 
         for (j = 0; j < numevents; j++) {
-            // 遍历未就绪的fd列表
-            aeFileEvent *fe = &eventLoop->events[eventLoop->fired[j].fd];
-            int mask = eventLoop->fired[j].mask; // 就绪fd的可读可写状态
-            int fd = eventLoop->fired[j].fd;
-            // 计数被调度执行的fd数量
+		    // 就绪的事件 当初注册在eventLoop时的IO任务
+		    int fd = eventLoop->fired[j].fd;
+            aeFileEvent *fe = &eventLoop->events[fd];
+			/**
+			 * IO任务的就绪状态
+			 * <ul>
+			 *   <li>1 可读</li>
+			 *   <li>2 可写</li>
+			 * </ul>
+			 */
+            int mask = eventLoop->fired[j].mask;
+            // 计数被调度执行IO任务
             int fired = 0; /* Number of events fired for current fd. */
 
             /* Normally we execute the readable event first, and the writable
@@ -556,16 +718,18 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
              * This is useful when, for instance, we want to do things
              * in the beforeSleep() hook, like fsyncing a file to disk,
              * before replying to a client. */
-            // 强制指定先写后读
-            int invert = fe->mask & AE_BARRIER;
-
-            /* Note the "fe->mask & mask & ..." code: maybe an already
-             * processed event removed an element that fired and we still
-             * didn't processed, so we check if the event is still valid.
-             *
-             * Fire the readable event if the call sequence is not
-             * inverted. */
             /**
+             * 当初注册任务事件的时候指定了监听的事件类型
+             * 对于系统的多路复用器而言 只有可读可写
+             * <ul>
+             *   <li>关注可读事件</li>
+             *   <li>关注可写事件</li>
+             * </ul>
+             * 但是redis在实现的是为了某些场景的高性能 对客户端暴露了指定先写后读的顺序
+             * 正常的读写顺序是先读后写
+             * 客户端可以通过AE_BARRIER标识指定先写后读
+             * 下面即将对就绪的fd进行读写操作 因此要先判断好读写顺序
+             *
              * 比较巧妙的设计
              * 对于读写顺序而言 要么是先写后读 要么是先读后写
              * 以下代码编排的就很优雅
@@ -580,19 +744,28 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
              *     write();
              *     read();
              * }
-             * 而是直接固定写在中间 根据条件判定读1执行还是读2执行
+             * 而是直接将写fd的逻辑固定在中间 再将读fd的逻辑固定在前后 然后通过if条件是走前面的读逻辑还是后面的读逻辑
              */
-            // 读1
-            if (!invert && fe->mask & mask & AE_READABLE) { // 可以先读后写 并且该fd当初被设置需要关注可读事件 此时fd也处于可读就绪状态
+            int invert = fe->mask & AE_BARRIER;
+
+            /* Note the "fe->mask & mask & ..." code: maybe an already
+             * processed event removed an element that fired and we still
+             * didn't processed, so we check if the event is still valid.
+             *
+             * Fire the readable event if the call sequence is not
+             * inverted. */
+			// 先读后写的顺序
+            if (!invert && fe->mask & mask & AE_READABLE) {
+			    // 回调读fd的函数
                 fe->rfileProc(eventLoop,fd,fe->clientData,mask); // 回调执行 可读
                 fired++;
                 fe = &eventLoop->events[fd]; /* Refresh in case of resize. */
             }
 
             /* Fire the writable event. */
-            // 写
-            if (fe->mask & mask & AE_WRITABLE) { // fd当初被设置需要关注可写事件 此时fd也处于可写就绪状态
+            if (fe->mask & mask & AE_WRITABLE) {
                 if (!fired || fe->wfileProc != fe->rfileProc) {
+				    // 回调写fd的函数
                     fe->wfileProc(eventLoop,fd,fe->clientData,mask);
                     fired++;
                 }
@@ -600,12 +773,13 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
 
             /* If we have to invert the call, fire the readable event now
              * after the writable one. */
-            // 读2
-            if (invert) { // 强制要求先写后读
+			// 先写后读的顺序
+            if (invert) {
                 fe = &eventLoop->events[fd]; /* Refresh in case of resize. */
                 if ((fe->mask & mask & AE_READABLE) &&
                     (!fired || fe->wfileProc != fe->rfileProc))
                 {
+				    // 回调读fd的函数
                     fe->rfileProc(eventLoop,fd,fe->clientData,mask);
                     fired++;
                 }
@@ -615,8 +789,11 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
         }
     }
     /* Check time events */
+	/**
+	 * 调度策略指定了需要调度定时任务
+	 */
     if (flags & AE_TIME_EVENTS)
-        processed += processTimeEvents(eventLoop); // 调度时间事件
+        processed += processTimeEvents(eventLoop);
 
     return processed; /* return the number of processed file/time events */
 }
@@ -643,24 +820,47 @@ int aeWait(int fd, int mask, long long milliseconds) {
     }
 }
 
+/**
+ * eventLoop启动
+ */
 void aeMain(aeEventLoop *eventLoop) {
     eventLoop->stop = 0;
     while (!eventLoop->stop) {
-        // 调度策略是关注时间事件和文件事件 在阻塞系统调用IO复用器前后回调指定的函数
+		/**
+		 * 调度策略
+		 * <ul>
+		 *   <li>需要调度执行的任务类型 IO任务和普通任务</li>
+		 *   <li>在多路复用器阻塞前执行回调函数</li>
+		 *   <li>在多路复用器从阻塞中唤醒后执行回调函数</li>
+		 * </ul>
+		 */
         aeProcessEvents(eventLoop, AE_ALL_EVENTS|
                                    AE_CALL_BEFORE_SLEEP|
                                    AE_CALL_AFTER_SLEEP);
     }
 }
 
+/**
+ * 对多路复用器进行了跨平台的封装
+ * <ul>
+ *   <li>mac的kqueue</li>
+ *   <li>linux的epoll</li>
+ * </ul>
+ */
 char *aeGetApiName(void) {
     return aeApiName();
 }
 
+/**
+ * setter函数 指定回调函数
+ */
 void aeSetBeforeSleepProc(aeEventLoop *eventLoop, aeBeforeSleepProc *beforesleep) {
     eventLoop->beforesleep = beforesleep;
 }
 
+/**
+ * setter函数 指定回调函数
+ */
 void aeSetAfterSleepProc(aeEventLoop *eventLoop, aeBeforeSleepProc *aftersleep) {
     eventLoop->aftersleep = aftersleep;
 }

@@ -61,8 +61,19 @@ int anetTcp6Server(char *err, int port, char *bindaddr, int backlog);
 int anetUnixServer(char *err, char *path, mode_t perm, int backlog);
 int anetTcpAccept(char *err, int serversock, char *ip, size_t ip_len, int *port);
 int anetUnixAccept(char *err, int serversock);
+/**
+ * 将socket设置为非阻塞模式
+ */
 int anetNonBlock(char *err, int fd);
+/**
+ * 将socket设置为阻塞模式
+ */
 int anetBlock(char *err, int fd);
+/**
+ * 在fd上设置close-on-exec标志
+ * 作用是一个文件描述符fd被标记为FD_CLOEXEC时 当进程通过exec系列函数(比如execve()和execvp())执行新程序时 该fd会被自动关闭
+ * @return fcntl系统调用的返回值
+ */
 int anetCloexec(int fd);
 int anetEnableTcpNoDelay(char *err, int fd);
 int anetDisableTcpNoDelay(char *err, int fd);

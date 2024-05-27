@@ -1889,6 +1889,9 @@ struct redisServer {
 	 * 赋值为0
 	 */
     int aof_rewrite_scheduled;      /* Rewrite once BGSAVE terminates. */
+	/**
+	 * aof的rewrite缓冲区 每10M为一个块 组织成链表
+	 */
     list *aof_rewrite_buf_blocks;   /* Hold changes during an AOF rewrite. */
     sds aof_buf;      /* AOF buffer, written before entering the event loop */
 
@@ -1902,6 +1905,12 @@ struct redisServer {
 	/**
 	 * 赋值于server.c::main->initServerConfig
 	 * 赋值为-1
+	 * 缓存着最后一次aof中记录的命令属于哪个库
+	 * 每次向aof文件写入的时候都要判断一下当前写入的命令属于哪个库的
+	 * <ul>
+	 *   <li>如果是不同的库 要用SELECT命令标识隔开</li>
+	 *   <li>如果是相同的库 就直接追加命令</li>
+	 * </ul>
 	 */
     int aof_selected_db; /* Currently selected DB in AOF */
 
@@ -1982,12 +1991,23 @@ struct redisServer {
     redisAtomic int aof_bio_fsync_status; /* Status of AOF fsync in bio job. */
     redisAtomic int aof_bio_fsync_errno;  /* Errno of AOF fsync in bio job. */
     /* AOF pipes used to communicate between parent and child during rewrite. */
+	/**
+	 * aof的rewrite缓冲区的内容需要写到文件就会通过EventLoop的事件机制回调
+	 * 将rewrite缓冲区内容写到这个文件上
+	 */
     int aof_pipe_write_data_to_child;
     int aof_pipe_read_data_from_parent;
     int aof_pipe_write_ack_to_parent;
     int aof_pipe_read_ack_from_child;
     int aof_pipe_write_ack_to_child;
     int aof_pipe_read_ack_from_parent;
+	/**
+	 * 开关标识
+	 * <ul>
+	 *   <li>非0 rewrite缓冲区内容不需要子进程处理</li>
+	 *   <li>0 rewrite缓冲区内容需要子进程处理</li>
+	 * </ul>
+	 */
     int aof_stop_sending_diff;     /* If true stop sending accumulated diffs
                                       to child process. */
     sds aof_child_diff;             /* AOF diff accumulator child side. */

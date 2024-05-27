@@ -311,7 +311,8 @@ void aeDeleteFileEvent(aeEventLoop *eventLoop, int fd, int mask)
 }
 
 /**
- * 注册在多路复用器上监听着的事件类型是什么
+ * 在EventLoop上注册了定时任务 关注fd的什么类型的状态事件
+ * 关注fd的可读还是可写
  * @param eventLoop 事件管理器
  * @return 监听着的事件状态 要监听fd的什么事件类型
  *         <ul>

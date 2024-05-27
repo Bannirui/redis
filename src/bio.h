@@ -43,9 +43,17 @@ void bioCreateFsyncJob(int fd);
 void bioCreateLazyFreeJob(lazy_free_fn free_fn, int arg_count, ...);
 
 /* Background job opcodes */
+/**
+ * 创建3个线程放在了线程池
+ * 每个线程在被CPU调度起来之后往入口函数bioProcessBackgroundJobs中传递
+ * 通过这种方式指定线程的工作任务
+ */
 #define BIO_CLOSE_FILE    0 /* Deferred close(2) syscall. */
 #define BIO_AOF_FSYNC     1 /* Deferred AOF fsync. */
 #define BIO_LAZY_FREE     2 /* Deferred objects freeing. */
+/**
+ * 3个后台线程
+ */
 #define BIO_NUM_OPS       3
 
 #endif

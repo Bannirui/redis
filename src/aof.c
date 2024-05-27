@@ -59,6 +59,7 @@ void aofClosePipes(void);
 
 #define AOF_RW_BUF_BLOCK_SIZE (1024*1024*10)    /* 10 MB per block */
 
+// rewrite缓冲区的内存布局是按照10M为一个块 组织成链表
 typedef struct aofrwblock {
     unsigned long used, free;
     char buf[AOF_RW_BUF_BLOCK_SIZE];
@@ -67,7 +68,16 @@ typedef struct aofrwblock {
 /* This function free the old AOF rewrite buffer if needed, and initialize
  * a fresh new one. It tests for server.aof_rewrite_buf_blocks equal to NULL
  * so can be used for the first initialization as well. */
+/**
+ * 重置aof的rewrite缓冲区
+ * 语义是
+ * <ul>
+ *   <li>如果还没分配rewrite缓冲区 实例化一个链表</li>
+ *   <li>如果已经分配了rewrite缓冲区 就将既有的内存释放掉 重新实例化一个新的链表</li>
+ * </ul>
+ */
 void aofRewriteBufferReset(void) {
+	// aof的rewrite缓冲区每10M为一个块 组织成链表
     if (server.aof_rewrite_buf_blocks)
         listRelease(server.aof_rewrite_buf_blocks);
 
@@ -76,14 +86,21 @@ void aofRewriteBufferReset(void) {
 }
 
 /* Return the current size of the AOF rewrite buffer. */
+/**
+ * rewrite缓冲区使用了多大内存
+ */
 unsigned long aofRewriteBufferSize(void) {
     listNode *ln;
+	// 指向链表的迭代器
     listIter li;
     unsigned long size = 0;
 
+	// 重置链表的迭代器
     listRewind(server.aof_rewrite_buf_blocks,&li);
+	// 通过迭代器轮询链表
     while((ln = listNext(&li))) {
         aofrwblock *block = listNodeValue(ln);
+		// 汇总rewrite缓冲区总共使用了多大内存
         size += block->used;
     }
     return size;
@@ -92,6 +109,10 @@ unsigned long aofRewriteBufferSize(void) {
 /* Event handler used to send data to the child process doing the AOF
  * rewrite. We send pieces of our AOF differences buffer so that the final
  * write when the child finishes the rewrite will be small. */
+/**
+ * 4个形参全部都不需要使用
+ * 真正的目的是读取rewrite缓冲区内容到指定的文件上
+ */
 void aofChildWriteDiffData(aeEventLoop *el, int fd, void *privdata, int mask) {
     listNode *ln;
     aofrwblock *block;
@@ -109,6 +130,7 @@ void aofChildWriteDiffData(aeEventLoop *el, int fd, void *privdata, int mask) {
                               AE_WRITABLE);
             return;
         }
+		// 把rewrite缓冲区的block内容写到指定的文件上
         if (block->used > 0) {
             nwritten = write(server.aof_pipe_write_data_to_child,
                              block->buf,block->used);
@@ -122,6 +144,11 @@ void aofChildWriteDiffData(aeEventLoop *el, int fd, void *privdata, int mask) {
 }
 
 /* Append data to the AOF rewrite buffer, allocating new blocks if needed. */
+/**
+ * 数据写到rewrite缓冲区
+ * @param s 要写入rewrite的数据
+ * @param len 要写入rewrite的数据大小
+ */
 void aofRewriteBufferAppend(unsigned char *s, unsigned long len) {
     listNode *ln = listLast(server.aof_rewrite_buf_blocks);
     aofrwblock *block = ln ? ln->value : NULL;
@@ -130,26 +157,39 @@ void aofRewriteBufferAppend(unsigned char *s, unsigned long len) {
         /* If we already got at least an allocated block, try appending
          * at least some piece into it. */
         if (block) {
+			// 当前可以写多少数据到rewrite中
             unsigned long thislen = (block->free < len) ? block->free : len;
             if (thislen) {  /* The current block is not already full. */
                 memcpy(block->buf+block->used, s, thislen);
                 block->used += thislen;
                 block->free -= thislen;
+				// 更新还有多少数据待写入rewrite
                 s += thislen;
                 len -= thislen;
             }
         }
 
+		/**
+		 * 代码执行到这只有两种情况
+		 * <ul>
+		 *   <li>rewrite缓冲区要分配的第一个block 前面代码都没有执行 此刻申请第一个block内存</li>
+		 *   <li>上面已经向rewrite链表的最后一个block写过一次数据了 还有数据要写 说明前面的block已经写满 此时需要申请新的block挂到rewrite链表上</li>
+		 * </ul>
+		 */
         if (len) { /* First block to allocate, or need another block. */
             int numblocks;
 
+			// 申请新的block
             block = zmalloc(sizeof(*block));
+			// 初始化的block大小都设置10M大小
             block->free = AOF_RW_BUF_BLOCK_SIZE;
             block->used = 0;
+			// 新的block挂到rewrite链表上 尾插
             listAddNodeTail(server.aof_rewrite_buf_blocks,block);
 
             /* Log every time we cross more 10 or 100 blocks, respectively
              * as a notice or warning. */
+			// rewrite缓冲区现在的block数量
             numblocks = listLength(server.aof_rewrite_buf_blocks);
             if (((numblocks+1) % 10) == 0) {
                 int level = ((numblocks+1) % 100) == 0 ? LL_WARNING :
@@ -162,9 +202,21 @@ void aofRewriteBufferAppend(unsigned char *s, unsigned long len) {
 
     /* Install a file event to send data to the rewrite child if there is
      * not one already. */
+	/**
+	 * 很巧妙的设计 体现了事件驱动的思想
+	 * 关联了EventLoop
+	 */
     if (!server.aof_stop_sending_diff &&
         aeGetFileEvents(server.el,server.aof_pipe_write_data_to_child) == 0)
     {
+		/**
+		 * 什么条件才能进入到这
+		 * <ul>
+		 *   <li>配置了需要将rewrite缓冲区内容写到文件中</li>
+		 *   <li>目标文件的可写状态的关注没有注册过EventLoop</li>
+		 * </ul>
+		 * 将目标文件的可写状态的关注注册到EventLoop上 等到目标文件一旦可写了 到时候EventLoop就会回调函数aofChildWriteDiffData
+		 */
         aeCreateFileEvent(server.el, server.aof_pipe_write_data_to_child,
             AE_WRITABLE, aofChildWriteDiffData, NULL);
     }
@@ -173,17 +225,27 @@ void aofRewriteBufferAppend(unsigned char *s, unsigned long len) {
 /* Write the buffer (possibly composed of multiple blocks) into the specified
  * fd. If a short write or any other error happens -1 is returned,
  * otherwise the number of bytes written is returned. */
+/**
+ * 整个rewrite缓冲区的内容写到指定的文件里
+ * @param fd 要把rewrite内容写到哪儿
+ * @return 总共写了多少数据
+ */
 ssize_t aofRewriteBufferWrite(int fd) {
     listNode *ln;
+	// 实例化一个链表的迭代器
     listIter li;
+	// 共计写了多少数据
     ssize_t count = 0;
 
+	// 初始化链表迭代器
     listRewind(server.aof_rewrite_buf_blocks,&li);
+	// 通过链表迭代器轮询链表 依次把block内容写到指定的fd上
     while((ln = listNext(&li))) {
         aofrwblock *block = listNodeValue(ln);
         ssize_t nwritten;
 
         if (block->used) {
+			// block中数据写到fd
             nwritten = write(fd,block->buf,block->used);
             if (nwritten != (ssize_t)block->used) {
                 if (nwritten == 0) errno = EIO;
@@ -549,17 +611,49 @@ try_fsync:
     }
 }
 
+/**
+ * aof命令生成
+ * 按照aof文本协议进行生成
+ * *n
+ * $命令1长度
+ * 命令1
+ * $命令2长度
+ * 命令2
+ * ...
+ * $命令n长度
+ * 命令n
+ * @param dst 生成的aof命令追加到字符串
+ * @param argc aof命令的参数个数
+ * @param argv aof命令需要的参数依次存放在argv中
+ */
 sds catAppendOnlyGenericCommand(sds dst, int argc, robj **argv) {
     char buf[32];
     int len, j;
     robj *o;
 
+	/**
+	 * aof命令第一行
+	 * *n\r\n
+	 */
     buf[0] = '*';
+	/**
+	 * argc整数转换成字符串放到buf字符串上
+	 * buf字符串第一个字符已经放上了*号
+	 * argc只能从第二个位置开始放
+	 * 最终buf字符串上的长度就可知了
+	 */
     len = 1+ll2string(buf+1,sizeof(buf)-1,argc);
+	// 加上回车换行符
     buf[len++] = '\r';
     buf[len++] = '\n';
+	// aof命令的第一行内容就生成号了 追加到dst字符串
     dst = sdscatlen(dst,buf,len);
 
+	/**
+	 * 拿出所有的redis命令 按照aof本文协议格式写好
+	 * $命令长度
+	 * 命令
+	 */
     for (j = 0; j < argc; j++) {
         o = getDecodedObject(argv[j]);
         buf[0] = '$';
@@ -581,27 +675,54 @@ sds catAppendOnlyGenericCommand(sds dst, int argc, robj **argv) {
  * This command is used in order to translate EXPIRE and PEXPIRE commands
  * into PEXPIREAT command so that we retain precision in the append only
  * file, and the time is always absolute and not relative. */
+/**
+ * 将redis设置过期时间的所有命令归一为pexpireat的命令
+ * pexpireat的时间表达是unix的毫秒
+ * @param buf pexpireat命令的aof文本协议放到这个字符串
+ * @param cmd 设置key过期时间的redis命令
+ * @param key 设置过期时间的key
+ * @param seconds 秒 语义是key多少秒后过期
+ * @return
+ */
 sds catAppendOnlyExpireAtCommand(sds buf, struct redisCommand *cmd, robj *key, robj *seconds) {
+	// 毫秒时间戳
     long long when;
     robj *argv[3];
 
     /* Make sure we can use strtoll */
+	// key的过期时间是多少秒
     seconds = getDecodedObject(seconds);
+	// 字符串转换整型
     when = strtoll(seconds->ptr,NULL,10);
     /* Convert argument into milliseconds for EXPIRE, SETEX, EXPIREAT */
     if (cmd->proc == expireCommand || cmd->proc == setexCommand ||
         cmd->proc == expireatCommand)
     {
+		// expire系列的过期时间单位都是秒 转化成毫秒
         when *= 1000;
     }
     /* Convert into absolute time for EXPIRE, PEXPIRE, SETEX, PSETEX */
     if (cmd->proc == expireCommand || cmd->proc == pexpireCommand ||
         cmd->proc == setexCommand || cmd->proc == psetexCommand)
     {
+		// 过期时间用毫秒时间戳来表达
         when += mstime();
     }
     decrRefCount(seconds);
 
+	/**
+	 * 此时pexpireat key 时间戳
+	 * redis的命令必要的组成部分已经全了 转换成aof的文本协议就是
+	 * *3
+	 * $9
+	 * PEXPIREAT
+	 * $3
+	 * key
+	 * $13
+	 * 1716269534383
+	 *
+	 * 将上述信息按照顺序封装到argv中 然后调用通用函数进行aof命令生成
+	 */
     argv[0] = shared.pexpireat;
     argv[1] = key;
     argv[2] = createStringObjectFromLongLong(when);
@@ -610,27 +731,75 @@ sds catAppendOnlyExpireAtCommand(sds buf, struct redisCommand *cmd, robj *key, r
     return buf;
 }
 
+/**
+ *
+ * @param cmd redis的命令 比如是get set还是expire
+ * @param dictid 数据库id 操作的是哪个数据库
+ * @param argv
+ * @param argc
+ */
 void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int argc) {
+	// 实例化一个空字符串 有的命令需要格式化 最终按照aof的文本协议格式生成对应的命令
     sds buf = sdsempty();
     /* The DB this command was targeting is not the same as the last command
      * we appended. To issue a SELECT command is needed. */
+	/**
+	 * redis所有数据库的指令记录共用的是同一个aof文件
+	 * 因此用select来标识指令是哪个数据库的
+	 * aof命令协议是
+	 * *<一条命令有几个参数>
+	 * $<指令1长度>
+	 * 指令1
+	 * $<指令2长度>
+	 * 指令2
+	 * ...
+	 */
     if (dictid != server.aof_selected_db) {
         char seldb[64];
-
+		// 数据库id
         snprintf(seldb,sizeof(seldb),"%d",dictid);
+		/**
+		 * 比如seldb是2
+		 * 那么aof命令就是
+		 * *2
+		 * $6
+		 * SELECT
+		 * $1
+		 * 2
+		 *
+		 * *号标识了接下来的命令有2个参数 第一个参数长度是6为SELECT 第二个参数长度是1为2
+		 * 将命令还原就是SELECT 2
+		 */
         buf = sdscatprintf(buf,"*2\r\n$6\r\nSELECT\r\n$%lu\r\n%s\r\n",
             (unsigned long)strlen(seldb),seldb);
+		// 更新最新的aof命令归属的数据库
         server.aof_selected_db = dictid;
     }
 
     if (cmd->proc == expireCommand || cmd->proc == pexpireCommand ||
         cmd->proc == expireatCommand) {
         /* Translate EXPIRE/PEXPIRE/EXPIREAT into PEXPIREAT */
+		/**
+		 * 设置过期系列的命令 统一转换为pexpireat命令
+		 * pexpireat的命令格式为
+		 * PEXPIREAT key unix-time-milliseconds [NX | XX | GT | LT]
+		 * argv[1] 是要设置过期时间的key
+		 * argv[2] 是key要设置的过期时间 单位是秒
+		 */
         buf = catAppendOnlyExpireAtCommand(buf,cmd,argv[1],argv[2]);
     } else if (cmd->proc == setCommand && argc > 3) {
+		/**
+		 * SET key value [NX | XX] [GET] [EX seconds | PX milliseconds | EXAT unix-time-seconds | PXAT unix-time-milliseconds | KEEPTTL]
+		 * 最简单的set命令就是set key value 总共就3个参数
+		 * 当set命令的参数多于3个的时候一定是同时对key设置了过期时间
+		 */
         robj *pxarg = NULL;
         /* When SET is used with EX/PX argument setGenericCommand propagates them with PX millisecond argument.
          * So since the command arguments are re-written there, we can rely here on the index of PX being 3. */
+		/**
+		 * ex和px分开处理 我是没整明白这样处理的目的是啥
+		 * 特地跑到github的默认分支看了一下 最新的代码已经移除了这个if分支 直接所有命令都直接调用catAppendOnlyGenericCommand函数
+		 */
         if (!strcasecmp(argv[3]->ptr, "px")) {
             pxarg = argv[4];
         }
@@ -645,11 +814,11 @@ void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int a
             decrRefCount(millisecond);
 
             robj *newargs[5];
-            newargs[0] = argv[0];
-            newargs[1] = argv[1];
-            newargs[2] = argv[2];
-            newargs[3] = shared.pxat;
-            newargs[4] = createStringObjectFromLongLong(when);
+            newargs[0] = argv[0]; // set
+            newargs[1] = argv[1]; // key
+            newargs[2] = argv[2]; // value
+            newargs[3] = shared.pxat; // pxat
+            newargs[4] = createStringObjectFromLongLong(when); // 毫秒时间戳
             buf = catAppendOnlyGenericCommand(buf,5,newargs);
             decrRefCount(newargs[4]);
         } else {
@@ -659,6 +828,13 @@ void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int a
         /* All the other commands don't need translation or need the
          * same translation already operated in the command vector
          * for the replication itself. */
+		/**
+		 * 其余命令都是常规用法
+		 * 比如
+		 * set key value
+		 * get key
+		 * 不需要额外的转换就可以直接解析转换成aof的文本协议格式
+		 */
         buf = catAppendOnlyGenericCommand(buf,argc,argv);
     }
 

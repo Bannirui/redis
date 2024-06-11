@@ -250,6 +250,7 @@ void bioCreateCloseJob(int fd) {
 
 /**
  * 给BIO_AOF_FSYNC类型的线程创建任务提交到任务队列
+ * @param fd fsync线程把aof缓冲区rewrite内容往哪个磁盘文件刷
  */
 void bioCreateFsyncJob(int fd) {
     struct bio_job *job = zmalloc(sizeof(*job));

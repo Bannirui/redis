@@ -57,6 +57,7 @@ void aofClosePipes(void);
  * AOF_RW_BUF_BLOCK_SIZE bytes.
  * ------------------------------------------------------------------------- */
 
+// rewrite缓冲区的内存布局是按照10M为一个块 组织成链表
 #define AOF_RW_BUF_BLOCK_SIZE (1024*1024*10)    /* 10 MB per block */
 
 // rewrite缓冲区的内存布局是按照10M为一个块 组织成链表
@@ -77,10 +78,14 @@ typedef struct aofrwblock {
  * </ul>
  */
 void aofRewriteBufferReset(void) {
-	// aof的rewrite缓冲区每10M为一个块 组织成链表
+	/**
+	 * aof的rewrite缓冲区每10M为一个块 组织成链表
+	 * 已经有了rewrite缓冲区就要释放内存进行重建新的缓冲区
+	 */
     if (server.aof_rewrite_buf_blocks)
         listRelease(server.aof_rewrite_buf_blocks);
 
+	// 新建链表实例 用来挂载一个一个的10M内存块
     server.aof_rewrite_buf_blocks = listCreate();
     listSetFreeMethod(server.aof_rewrite_buf_blocks,zfree);
 }
@@ -245,12 +250,13 @@ ssize_t aofRewriteBufferWrite(int fd) {
         ssize_t nwritten;
 
         if (block->used) {
-			// block中数据写到fd
+			// 以block的10M为单位刷磁盘 block中数据写到fd
             nwritten = write(fd,block->buf,block->used);
             if (nwritten != (ssize_t)block->used) {
                 if (nwritten == 0) errno = EIO;
                 return -1;
             }
+			// 每写完一个block就统计写了多少数据到磁盘
             count += nwritten;
         }
     }
@@ -263,13 +269,24 @@ ssize_t aofRewriteBufferWrite(int fd) {
 
 /* Return true if an AOf fsync is currently already in progress in a
  * BIO thread. */
+/**
+ * 检查fsync线程工作状态
+ * @return 非0表示线程在工作中
+ *         0表示线程没在工作
+ */
 int aofFsyncInProgress(void) {
+	// 负责fsync线程的任务队列情况 有任务说明fsync线程已经处于工作中了
     return bioPendingJobsOfType(BIO_AOF_FSYNC) != 0;
 }
 
 /* Starts a background task that performs fsync() against the specified
  * file descriptor (the one of the AOF file) in another thread. */
+/**
+ * 新建fsync后台线程任务
+ * @param fd fsync线程把rewrite缓冲区内容往哪个文件刷
+ */
 void aof_background_fsync(int fd) {
+	// 创建fsync任务入队
     bioCreateFsyncJob(fd);
 }
 
@@ -419,6 +436,11 @@ ssize_t aofWrite(int fd, const char *buf, size_t len) {
  * However if force is set to 1 we'll write regardless of the background
  * fsync. */
 #define AOF_WRITE_LOG_ERROR_RATE 30 /* Seconds between errors logging. */
+/**
+ *
+ * @param force 非0
+ *              0
+ */
 void flushAppendOnlyFile(int force) {
     ssize_t nwritten;
     int sync_in_progress = 0;
@@ -592,6 +614,7 @@ try_fsync:
         /* Let's try to get this data on the disk. To guarantee data safe when
          * the AOF fsync policy is 'always', we should exit if failed to fsync
          * AOF (see comment next to the exit(1) after write error above). */
+		// fsync系统调用执行文件的刷盘
         if (redis_fsync(server.aof_fd) == -1) {
             serverLog(LL_WARNING,"Can't persist AOF for fsync error when the "
               "AOF fsync policy is 'always': %s. Exiting...", strerror(errno));
@@ -926,8 +949,14 @@ void freeFakeClient(struct client *c) {
 /* Replay the append log file. On success C_OK is returned. On non fatal
  * error (the append only file is zero-length) C_ERR is returned. On
  * fatal error an error message is logged and the program exists. */
+/**
+ *
+ * @param filename aof文件
+ * @return
+ */
 int loadAppendOnlyFile(char *filename) {
     struct client *fakeClient;
+	// 只读打开aof文件
     FILE *fp = fopen(filename,"r");
     struct redis_stat sb;
     int old_aof_state = server.aof_state;
@@ -944,6 +973,10 @@ int loadAppendOnlyFile(char *filename) {
      * is a valid AOF because an empty server with AOF enabled will create
      * a zero length file at startup, that will remain like that if no write
      * operation is received. */
+	/**
+	 * stat系统调用获取aof文件的信息 主要为了知道文件的大小
+	 * aof文件为空的场景
+	 */
     if (fp && redis_fstat(fileno(fp),&sb) != -1 && sb.st_size == 0) {
         server.aof_current_size = 0;
         server.aof_fsync_offset = server.aof_current_size;
@@ -961,14 +994,17 @@ int loadAppendOnlyFile(char *filename) {
     /* Check if this AOF file has an RDB preamble. In that case we need to
      * load the RDB file and later continue loading the AOF tail. */
     char sig[5]; /* "REDIS" */
+	// 从fp指向的aof文件读5个字符到sig数组中
     if (fread(sig,1,5,fp) != 5 || memcmp(sig,"REDIS",5) != 0) {
         /* No RDB preamble, seek back at 0 offset. */
+		// 上面用fread读了5个字节的内容 现在需要把游标重置到起点处
         if (fseek(fp,0,SEEK_SET) == -1) goto readerr;
     } else {
         /* RDB preamble. Pass loading the RDB functions. */
         rio rdb;
 
         serverLog(LL_NOTICE,"Reading RDB preamble from AOF file...");
+		// 上面用fread读了5个字节的内容 现在需要把游标重置到起点处
         if (fseek(fp,0,SEEK_SET) == -1) goto readerr;
         rioInitWithFile(&rdb,fp);
         if (rdbLoadRio(&rdb,RDBFLAGS_AOF_PREAMBLE,NULL) != C_OK) {
@@ -990,11 +1026,16 @@ int loadAppendOnlyFile(char *filename) {
 
         /* Serve the clients from time to time */
         if (!(loops++ % 1000)) {
+			// ftello是对ftell的升级 支持大文件 拿到文件流当前文件位置
             loadingProgress(ftello(fp));
             processEventsWhileBlocked();
             processModuleLoadingProgressEvent(1);
         }
 
+		/**
+		 * 从文件中读数据到内存数组中
+		 * 开始读aof文本协议
+		 */
         if (fgets(buf,sizeof(buf),fp) == NULL) {
             if (feof(fp))
                 break;
@@ -1003,6 +1044,7 @@ int loadAppendOnlyFile(char *filename) {
         }
         if (buf[0] != '*') goto fmterr;
         if (buf[1] == '\0') goto readerr;
+		// *号后面跟着的数字解析出来 就是aof文本协议的参数的个数
         argc = atoi(buf+1);
         if (argc < 1) goto fmterr;
 
@@ -2007,15 +2049,20 @@ void aofRemoveTempFile(pid_t childpid) {
  * to check the size of the file. This is useful after a rewrite or after
  * a restart, normally the size is updated just adding the write length
  * to the current length, that is much faster. */
+/**
+ * 获取aof文件大小 更新阈值
+ */
 void aofUpdateCurrentSize(void) {
     struct redis_stat sb;
     mstime_t latency;
 
     latencyStartMonitor(latency);
+	// 系统调用stat获取文件的信息
     if (redis_fstat(server.aof_fd,&sb) == -1) {
         serverLog(LL_WARNING,"Unable to obtain the AOF file length. stat: %s",
             strerror(errno));
     } else {
+		// aof文件大小 多少个byte
         server.aof_current_size = sb.st_size;
     }
     latencyEndMonitor(latency);

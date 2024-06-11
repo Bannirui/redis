@@ -49,6 +49,7 @@ void bioCreateLazyFreeJob(lazy_free_fn free_fn, int arg_count, ...);
  * 通过这种方式指定线程的工作任务
  */
 #define BIO_CLOSE_FILE    0 /* Deferred close(2) syscall. */
+// 负责执行fsync的线程
 #define BIO_AOF_FSYNC     1 /* Deferred AOF fsync. */
 #define BIO_LAZY_FREE     2 /* Deferred objects freeing. */
 /**

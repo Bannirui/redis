@@ -2,6 +2,7 @@
 cmake执行shell脚本 build_jemalloc.sh
 sh脚本负责通过configure生成Makefile 再通过make进行编译静态库
 ]]
+message(STATUS "jemalloc不是cmake项目 执行sh脚本进行编译")
 execute_process(
     COMMAND sh "${CMAKE_CURRENT_SOURCE_DIR}/build_jemalloc.sh"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}

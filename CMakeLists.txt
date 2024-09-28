@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.28.0)
+cmake_minimum_required(VERSION 3.25.0)
 project(redis_6.2 C)
 
 #[[
@@ -19,7 +19,7 @@ execute_process(
 #系统库 不同的平台依赖的系统库有差异
 set(SYS_LIB -lm -ldl -lresolv -lpthread)
 if (LINUX)
-    set(SYS_LIB "${SYS_LIB} -latomic -lnsl -lrt -lcrypt -lbsd")
+    set(SYS_LIB "${SYS_LIB} -latomic -lnsl -lrt -lcrypt")
 elseif (APPLE)
 endif ()
 

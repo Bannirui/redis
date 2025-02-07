@@ -51,8 +51,24 @@ typedef enum {
 #define CONN_TYPE_SOCKET            1
 #define CONN_TYPE_TLS               2
 
+/**
+ * 网络操作回调函数
+ * <ul>
+ *  <li>主体是connection</li>
+ *  <li>行为是具体的回调函数</li>
+ * </ul>
+ * connection会持有回调函数 由connection根据需要发起对回调函数的调用
+ */
 typedef void (*ConnectionCallbackFunc)(struct connection *conn);
 
+/**
+ * 接口 定义了网络连接读写操作
+ * 实现有2个
+ * <ul>
+ *   <li>connection.c::CT_Socket unix本地socket也被归于CT_Socket了</li>
+ *   <li>tls.c::CT_TLS</li>
+ * </ul>
+ */
 typedef struct ConnectionType {
     void (*ae_handler)(struct aeEventLoop *el, int fd, void *clientData, int mask);
     int (*connect)(struct connection *conn, const char *addr, int port, const char *source_addr, ConnectionCallbackFunc connect_handler);
@@ -81,8 +97,6 @@ struct connection {
     /**
      * 在指定注册eventLoop事件管理器之前
      * 要先指定读写事件处理器回调函数 到时候要用到这个type
-     *   - 对于服务端 实例话connection时候指定type是CT_Socket
-     *   - 对于客户端
      */
     ConnectionType *type;
     // redis定义的连接状态
@@ -90,7 +104,19 @@ struct connection {
     short int flags;
     short int refs;
     int last_errno;
+    /**
+     * 指向client对象 使client和connection相互引用
+     */
     void *private_data;
+    /**
+     * 对于网络连接而言要处理器的无非就是连接请求 读请求和写请求
+     * 因此在多路复用器事件就绪时回调的函数就3个
+     * <ul>
+     *  <li>负责处理连接</li>
+     *  <li>负责处理写</li>
+     *  <li>负责处理读</li>
+     * </ul>
+     */
     ConnectionCallbackFunc conn_handler;
     ConnectionCallbackFunc write_handler;
     ConnectionCallbackFunc read_handler;
@@ -240,12 +266,29 @@ static inline int connGetType(connection *conn) {
 }
 
 connection *connCreateSocket();
+
+/**
+ * 初始化连接状态为ACCEPTING 标识刚完成OS的accept系统调用
+ * @param fd 被accept后的fd
+ * @return connection实例
+ */
 connection *connCreateAcceptedSocket(int fd);
 
 connection *connCreateTLS();
 connection *connCreateAcceptedTLS(int fd, int require_auth);
 
+/**
+ * 让connection对象持有client对象 让connection和client对象互相引用
+ * @param conn connection对象
+ * @param data client对象
+ */
 void connSetPrivateData(connection *conn, void *data);
+
+/**
+ * 获取connection对象中的client对象
+ * @param conn connection对象
+ * @return client对象
+ */
 void *connGetPrivateData(connection *conn);
 int connGetState(connection *conn);
 int connHasWriteHandler(connection *conn);
@@ -253,7 +296,18 @@ int connHasReadHandler(connection *conn);
 int connGetSocketError(connection *conn);
 
 /* anet-style wrappers to conns */
+/**
+ * 将连接设置为阻塞式
+ * @param conn connection对象
+ * @return 操作状态码
+ */
 int connBlock(connection *conn);
+
+/**
+ * 将连接设置为非阻塞式
+ * @param conn connection对象
+ * @return 操作状态码
+ */
 int connNonBlock(connection *conn);
 int connEnableTcpNoDelay(connection *conn);
 int connDisableTcpNoDelay(connection *conn);

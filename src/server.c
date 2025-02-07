@@ -3499,11 +3499,11 @@ void closeSocketListeners(socketFds *sfd) {
 /* Create an event handler for accepting new connections in TCP or TLS domain sockets.
  * This works atomically for all socket fds */
 /**
- * @brief 服务端被动式socket添加到事件管理器 委托事件管理器注册到IO多路复用器上
- *        当有客户端向客户端发起连接时
- *        该服务端socket被IO复用器选中 触发的事件为可读
- *        事件管理器eventLoop回调指定的处理器 由处理器实现连接请求的处理
- * @param sfd 服务端被动socket
+ * 批量操作
+ * 服务端被动式socket添加到事件管理器 委托事件管理器注册到IO多路复用器上
+ * 当有别的客户端向当前服务端发起连接时 该服务端socket被IO多路复用器选中 触发的事件为可读
+ * 事件管理器eventLoop回调指定的处理器 由处理器实现连接请求的处理
+ * @param sfd 服务端被动socket 批量
  * @param accept_handler 负责处理客户端发起的连接请求
  * @return 操作状态码
  *         0-成功
@@ -3516,7 +3516,7 @@ int createSocketAcceptHandler(socketFds *sfd, aeFileProc *accept_handler) {
         /**
          * 将服务端socket注册到事件管理器eventLoop上
          * eventLoop将socket注册到系统的IO多路复用器上
-         *   - 关注该socket的可读事件 将来某个时机客户端发来的连接请求 从服务端视角来看就是serverSocket可读
+         *   - 关注该socket的可读事件 将来某个时机客户端发来了连接请求 从服务端视角来看就是serverSocket可读
          * 指定回调处理器accept_handler
          *   - 将来serverSocket可读时 eventLoop会从带超时的IO复用器系统调用上跳出阻塞点
          *   - eventLoop回调accept_handler来处理客户端的tcp连接请求
@@ -3765,7 +3765,7 @@ void initServer(void) {
     const char *clk_msg = monotonicInit();
     serverLog(LL_NOTICE, "monotonic clock: %s", clk_msg);
     /**
-     * 创建事件监听器 10_000+128
+     * 创建事件监听器 容量是10_000+128
      */
     server.el = aeCreateEventLoop(server.maxclients+CONFIG_FDSET_INCR);
     if (server.el == NULL) {
@@ -3903,7 +3903,7 @@ void initServer(void) {
      * domain sockets. */
     /**
      * 将监听端口的Socket的fd加入到事件监控列表
-     *   - 服务端口
+     *   - 服务端口6379
      *   - ssl端口
      *   - unix端口
      * 通过IO多路复用器关注服务端socket上的可读事件 也就是客户端发过来的连接请求

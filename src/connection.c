@@ -49,6 +49,7 @@
  *    depending on the implementation (for TCP they are; for TLS they aren't).
  */
 
+// 前向声明
 ConnectionType CT_Socket;
 
 /* When a connection is created we must know its type already, but the
@@ -91,11 +92,6 @@ connection *connCreateSocket() {
  * Callers should use connGetState() and verify the created connection
  * is not in an error state (which is not possible for a socket connection,
  * but could but possible with other protocols).
- */
-/**
- * @brief 初始化连接状态为ACCEPTING 标识刚完成OS的accept系统调用而已
- * @param fd
- * @return connection实例
  */
 connection *connCreateAcceptedSocket(int fd) {
     // 创建connection实例 初始化了type为CT_Socket 后面在指定读写回调函数的时候要用到
@@ -377,8 +373,7 @@ static int connSocketGetType(connection *conn) {
 }
 
 /**
- * 初始化connection赋值给了type字段
- * 在将socket注册eventLoop时依赖的就是这个
+ * 对应TCP连接 包括使用了TCP连接也包括使用unix本地socket的连接
  */
 ConnectionType CT_Socket = {
     .ae_handler = connSocketEventHandler, // 这个是核心 将来IO多路复用器阻塞调用出来的就绪socket 被eventLoop回调函数就是这个 它起到了分派器的作用
@@ -421,11 +416,13 @@ int connFormatFdAddr(connection *conn, char *buf, size_t buf_len, int fd_to_str_
 
 int connBlock(connection *conn) {
     if (conn->fd == -1) return C_ERR;
+    // 将socket设置为阻塞式
     return anetBlock(NULL, conn->fd);
 }
 
 int connNonBlock(connection *conn) {
     if (conn->fd == -1) return C_ERR;
+    // 将socket设置为非阻塞式
     return anetNonBlock(NULL, conn->fd);
 }
 

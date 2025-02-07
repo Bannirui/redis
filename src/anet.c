@@ -445,8 +445,8 @@ static int anetCreateSocket(char *err, int domain) {
  * <ul>
  *   <li>source_add
  *     <ul>
- *       <li>没传source_add 那么套接字就压根不会去bind 那么就是一个标准的主动socket 也就是用在客户端上</li>
- *       <li>传了source_add 就会将socket尽力地进行bind操作 可以用在服务端上</li>
+ *       <li>没传source_addr 那么套接字就压根不会去bind 那么就是一个标准的主动socket 也就是用在客户端上</li>
+ *       <li>传了source_addr 就会将socket尽力地进行bind操作 可以用在服务端上</li>
  *     </ul>
  *   </li>
  *   <li>flag 套接字的各种能力属性全靠这个标识来指定</li>
@@ -890,7 +890,7 @@ static int anetGenericAccept(char *err, int s, struct sockaddr *sa, socklen_t *l
 /**
  * 接受TCP连接的套接字
  * @param s 服务端套接字
- * @param ip 存储客户端套接字地址信息
+ * @param ip 用于存储客户端套接字地址信息
  * @param ip_len 数据结构大小
  * @param port 存储客户端套接字端口
  * @return 新建出来跟客户端通信的套接字

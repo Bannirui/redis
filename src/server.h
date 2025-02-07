@@ -1515,6 +1515,9 @@ struct redisServer {
 	 * 赋值为0
 	 */
     mstime_t client_pause_end_time;    /* Time when we undo clients_paused */
+    /**
+     * 用于接收系统调用的错误信息
+     */
     char neterr[ANET_ERR_LEN];   /* Error buffer for anet.c */
 
 	/**

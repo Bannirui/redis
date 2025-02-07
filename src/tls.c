@@ -920,7 +920,7 @@ static int connTLSGetType(connection *conn_) {
 
     return CONN_TYPE_TLS;
 }
-
+// 对应使用了TLS的TCP
 ConnectionType CT_TLS = {
     .ae_handler = tlsEventHandler,
     .accept = connTLSAccept,

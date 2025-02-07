@@ -159,6 +159,7 @@ client *createClient(connection *conn) {
          *     - 分派器将读事件派发给readQueryFromClient处理器来执行
          */
         connSetReadHandler(conn, readQueryFromClient);
+        // 关联connection和client 让connection和client互相引用
         connSetPrivateData(conn, c);
     }
 
@@ -1081,7 +1082,7 @@ void clientAcceptHandler(connection *conn) {
 /**
  * @brief 此时对于OS而言 端到端的TCP连接已经建立好 Socket完全已经可以通信了
  *        redis开始建立redis软件层面的连接
- *          - 设置socket非阻塞式编程
+ *          - 把accept系统调用fork出来的socket设置非阻塞式
  *          - 完成了对eventLoop的注册
  *            - socket信息登记到eventLoop
  *            - 向IO多路复用器注册告知对socket的读事件感兴趣
@@ -1149,7 +1150,7 @@ static void acceptCommonHandler(connection *conn, int flags, char *ip) {
      *   - socket读事件就绪后connSocketEventHandler分派器被eventLoop回调
      *   - 分派器将读事件派发给readQueryFromClient处理器来执行
      *
-     * 值得注意的是此时connection的state还是ACCEPTING
+     * 值得注意的是此时connection的state还是ACCEPTING 物理上系统层面上的socket已经连接成功 但是redis抽象了connection还没有完成连接流程
      */
     if ((c = createClient(conn)) == NULL) {
         serverLog(LL_WARNING,
@@ -2261,7 +2262,12 @@ void processInputBuffer(client *c) {
     }
 }
 
+/**
+ * 可读时触发回调的真正处理逻辑 也就是说此时客户端有请求命令到服务端 当前函数就是命令处理器
+ * @parm 服务端accept出来的socket
+ */
 void readQueryFromClient(connection *conn) {
+    // 客户端 也就是通信双方的client和server
     client *c = connGetPrivateData(conn);
     int nread, readlen;
     size_t qblen;

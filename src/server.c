@@ -2719,8 +2719,9 @@ void createSharedObjects(void) {
     shared.getack = createStringObject("GETACK",6);
     shared.special_asterick = createStringObject("*",1);
     shared.special_equals = createStringObject("=",1);
+    // 字符串的共享变量
     shared.redacted = makeObjectShared(createStringObject("(redacted)",10));
-
+    // 小整数缓存池
     for (j = 0; j < OBJ_SHARED_INTEGERS; j++) {
         shared.integers[j] =
             makeObjectShared(createObject(OBJ_STRING,(void*)(long)j));

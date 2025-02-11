@@ -673,7 +673,7 @@ typedef struct RedisModuleDigest {
 /* Objects encoding. Some kind of objects like Strings and Hashes can be
  * internally represented in multiple ways. The 'encoding' field of the object
  * is set to one of this fields for this object. */
-// raw编码字符串
+// raw编码字符串 只有字符串才会用到的编码方式
 #define OBJ_ENCODING_RAW 0     /* Raw representation */
 
 // 整数编码字符串
@@ -757,8 +757,26 @@ typedef struct redisObject {
     unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or
                             * LFU data (least significant 8 bits frequency
                             * and most significant 16 bits access time). */
-    // 数据的引用计数
-    int refcount;
+	/**
+	 * 数据的引用计数 这个对象被引用的次数 用于对象的生命周期管理
+	 * <ul>
+	 *  <li>引用时增加计数</li>
+	 *  <li>解绑时减少计数</li>
+	 * </ul>
+	 * 通过计数管理对象的生命周期 但是约定了常量对象 也就是不会回收内存 一般用于小整数缓存
+	 * 因此约定了将INT_MAX作为特殊标识
+	 * <ul>
+	 *  <li>一旦某个对象的引用计数是INT_MAX 那么这个对象就是作为常量对象来使用的</li>
+	 *  <li>引用这个对象时不会再增加这个计数</li>
+	 *  <li>释放对为个对象的引用时也不会减少这个计数</li>
+	 * </ul>
+	 * 那么正常情况下这个值的区间就是是[1...INT_MAX-1]
+	 * <ul>
+	 *  <li>引用对象时就增加引用计数 增加到INT_MAX时就是抛异常</li>
+	 *  <li>解绑对象时就减少引用计数 减少到0时就是销毁对象进行内存回收</li>
+	 * </ul>
+	 */
+	int refcount;
     /**
      * <p>指向数据类型的编码方式的实现上<p>
      * <ul>

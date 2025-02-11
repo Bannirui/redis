@@ -58,6 +58,7 @@ robj *createObject(int type, void *ptr) {
     robj *o = zmalloc(sizeof(*o));
     o->type = type; // 数据类型
     o->encoding = OBJ_ENCODING_RAW; // 编码方式
+    // 字符串指向的是对应的sds实例
     o->ptr = ptr;
     o->refcount = 1;
 
@@ -66,11 +67,9 @@ robj *createObject(int type, void *ptr) {
     // 内存淘汰策略是MAXMEMORY_NO_EVICTION
     if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
         /**
-         * @brief
-         *   - 高16位 记录访问数据的时间戳 分钟
-         *   - 低8位 应该记录访问数据次数 但是这个地方初始化是5 啥意思
+         * - 高16位 记录访问数据的时间戳 分钟
+         * - 低8位 应该记录访问数据次数 但是这个地方初始化是5 啥意思
          */
-         // TODO: 2023/4/12
         o->lru = (LFUGetTimeInMinutes()<<8) | LFU_INIT_VAL;
     } else {
         // 记录访问数据的时间戳 秒
@@ -90,8 +89,12 @@ robj *createObject(int type, void *ptr) {
  * robj *myobject = makeObjectShared(createObject(...));
  *
  */
+/**
+ * 把对象标识为常量 引用计数置为INT_MAX这个特殊标识
+ */
 robj *makeObjectShared(robj *o) {
     serverAssert(o->refcount == 1);
+    // 引用计数INT_MAX特殊标识 标识对象是全局常量
     o->refcount = OBJ_SHARED_REFCOUNT;
     return o;
 }
@@ -525,20 +528,37 @@ void freeStreamObject(robj *o) {
     freeStream(o->ptr);
 }
 
+/**
+ * 有其他对象引用当前对象 增加当前对象的引用计数
+ * INT_MAX边界需要处理
+ * @param o 被引用的对象
+ */
 void incrRefCount(robj *o) {
+    // 引用计数在[1...INT_MAX)区间内的都是普通对象 增加计数
     if (o->refcount < OBJ_FIRST_SPECIAL_REFCOUNT) {
         o->refcount++;
     } else {
         if (o->refcount == OBJ_SHARED_REFCOUNT) {
+            // 常量对象的引用计数用INT_MAX特殊标识 这个标识不能动
             /* Nothing to do: this refcount is immutable. */
         } else if (o->refcount == OBJ_STATIC_REFCOUNT) {
+            // 普通对象能被引用INT_MAX次作为异常上抛
             serverPanic("You tried to retain an object allocated in the stack");
         }
     }
 }
 
+/**
+ * 其他对象解绑当前对象时 把当前对象的引用计数减少
+ * <ul>需要处理的边界有2个
+ *   <li>0 当某个对象不再被引用时就说明对象内存需要释放</li>
+ *   <li>INT_MAX 常量不用回收 不要改变这个特殊引用计数</li>
+ * </ul>
+ * @param o 当前对象
+ */
 void decrRefCount(robj *o) {
     if (o->refcount == 1) {
+        // 进行垃圾回收
         switch(o->type) {
         case OBJ_STRING: freeStringObject(o); break;
         case OBJ_LIST: freeListObject(o); break;
@@ -551,7 +571,9 @@ void decrRefCount(robj *o) {
         }
         zfree(o);
     } else {
+        // 理论上不存在的边界 上抛异常
         if (o->refcount <= 0) serverPanic("decrRefCount against refcount <= 0");
+        // 正常对象被解绑减少引用计数
         if (o->refcount != OBJ_SHARED_REFCOUNT) o->refcount--;
     }
 }

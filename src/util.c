@@ -382,11 +382,16 @@ int ll2string(char *dst, size_t dstlen, long long svalue) {
  * Because of its strictness, it is safe to use this function to check if
  * you can convert a string into a long long, and obtain back the string
  * from the number without any loss in the string representation. */
-// 将字符串转换成8字节整数
-// @param s 字符串
-// @param slen 字符串长度
-// @param value 字符串转换成的整数
-// @return 0-标识字符串不可以转成整数 1-标识字符串可以转换成整数
+/**
+ * 字符串转long型整数
+ * @param s 要转整数的字符串
+ * @param slen 字符串长度
+ * @param value 字符串转成的整数
+ * @return 操作状态码<ul>
+ *                   <li>0-标识转失败</li>
+ *                   <li>1-标识转成功</li>
+ *                 </ul>
+ */
 int string2ll(const char *s, size_t slen, long long *value) {
     const char *p = s;
     size_t plen = 0;

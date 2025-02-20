@@ -896,16 +896,25 @@ int getLongDoubleFromObjectOrReply(client *c, robj *o, long double *target, cons
     return C_OK;
 }
 
+/**
+ * 字符串转整数
+ * @param o redisObject类型str
+ * @param target 字符串转long整数
+ * @return 操作状态码
+ */
 int getLongLongFromObject(robj *o, long long *target) {
     long long value;
 
     if (o == NULL) {
         value = 0;
     } else {
+        // 数据类型str
         serverAssertWithInfo(NULL,o,o->type == OBJ_STRING);
         if (sdsEncodedObject(o)) {
+            // embed或raw编码sds char型字符串转整数
             if (string2ll(o->ptr,sdslen(o->ptr),&value) == 0) return C_ERR;
         } else if (o->encoding == OBJ_ENCODING_INT) {
+            // int编码sds
             value = (long)o->ptr;
         } else {
             serverPanic("Unknown string encoding");
@@ -915,12 +924,24 @@ int getLongLongFromObject(robj *o, long long *target) {
     return C_OK;
 }
 
+/**
+ * 将redisObject解析成long整数到target中
+ * 解析失败就行提示异常信息 msg有值就行用msg否则用默认提示信息
+ * @param c 解析失败了要回复错误信息
+ * @param o 从redisObject中解析出long整数 redisObject的类型是sds
+ * @param target 解析出来的long整数
+ * @param msg 解析失败了要回复的错误信息 不指定就行用默认的[value is not an integer or out of range]
+ * @return 操作状态码
+ */
 int getLongLongFromObjectOrReply(client *c, robj *o, long long *target, const char *msg) {
     long long value;
+    // sds字符串解析long整数到target
     if (getLongLongFromObject(o, &value) != C_OK) {
         if (msg != NULL) {
+            // 提示指定错误信息
             addReplyError(c,(char*)msg);
         } else {
+            // 默认错误提示信息
             addReplyError(c,"value is not an integer or out of range");
         }
         return C_ERR;
@@ -945,8 +966,19 @@ int getLongFromObjectOrReply(client *c, robj *o, long *target, const char *msg) 
     return C_OK;
 }
 
+/**
+ * 字符串转整数target 不在[min...max]区间用msg作为错误提示信息
+ * @param c 整数不在[min...max]上时要提示错误信息
+ * @param o redisObject str字符串
+ * @param min 限制转成的整数区间 不在区间内要提示错误信息
+ * @param max 限制转成的整数区间 不在区间内要提示错误信息
+ * @param target 字符串转成的long整数
+ * @param msg 整数不在[min...max]区间时候的报错信息
+ * @return 操作状态码
+ */
 int getRangeLongFromObjectOrReply(client *c, robj *o, long min, long max, long *target, const char *msg) {
     if (getLongFromObjectOrReply(c, o, target, msg) != C_OK) return C_ERR;
+    // 校验整数在区间[min...max]上
     if (*target < min || *target > max) {
         if (msg != NULL) {
             addReplyError(c,(char*)msg);
@@ -958,6 +990,14 @@ int getRangeLongFromObjectOrReply(client *c, robj *o, long min, long max, long *
     return C_OK;
 }
 
+/**
+ * 字符串o转正整数target
+ * @param c 报错信息返沪
+ * @param o redisObject字符串
+ * @param target 字符串转成的整数
+ * @param msg 不是正整数时的报错信息 没有指定就行用默认报错信息[value is out of range, must be positive]
+ * @return 操作状态码
+ */
 int getPositiveLongFromObjectOrReply(client *c, robj *o, long *target, const char *msg) {
     if (msg) {
         return getRangeLongFromObjectOrReply(c, o, 0, LONG_MAX, target, msg);
@@ -966,6 +1006,9 @@ int getPositiveLongFromObjectOrReply(client *c, robj *o, long *target, const cha
     }
 }
 
+/**
+ * 字符串o转int整数target
+ */
 int getIntFromObjectOrReply(client *c, robj *o, int *target, const char *msg) {
     long value;
 
@@ -976,6 +1019,17 @@ int getIntFromObjectOrReply(client *c, robj *o, int *target, const char *msg) {
     return C_OK;
 }
 
+/**
+ * 字符串编码方式枚举描述
+ * 字符串有3种编码方式
+ * <ul>
+ *   <li>0 raw编码</li>
+ *   <li>1 int编码</li>
+ *   <li>8 embed编码</li>
+ * </ul>
+ * @param encoding 字符串编码枚举值
+ * @return 字符串编码枚举的映射
+ */
 char *strEncoding(int encoding) {
     switch(encoding) {
     case OBJ_ENCODING_RAW: return "raw";
@@ -1030,6 +1084,7 @@ size_t objectComputeSize(robj *o, size_t sample_size) {
     size_t asize = 0, elesize = 0, samples = 0;
 
     if (o->type == OBJ_STRING) {
+        // 字符串
         if(o->encoding == OBJ_ENCODING_INT) {
             asize = sizeof(*o);
         } else if(o->encoding == OBJ_ENCODING_RAW) {

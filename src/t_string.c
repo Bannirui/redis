@@ -37,6 +37,12 @@ int getGenericCommand(client *c);
  * String Commands
  *----------------------------------------------------------------------------*/
 
+/**
+ * 校验字符串长度不能超过阈值 默认是512M
+ * 可以通过配置文件proto-max-bulk-len自定义
+ * @param size 字符串长度
+ * @return 状态码
+ */
 static int checkStringLength(client *c, long long size) {
     if (!(c->flags & CLIENT_MASTER) && size > server.proto_max_bulk_len) {
         addReplyError(c,"string exceeds maximum allowed size (proto-max-bulk-len)");
@@ -84,7 +90,7 @@ static int checkStringLength(client *c, long long size) {
  * @param flags 体现了set命令的可选项命令 NX XX EX PX等可选项的或运算
  * @param key 键
  * @param val 值
- * @param expire 设置了过期 过期的值
+ * @param expire 设置了过期 过期的值 类型是str
  * @param unit 设置了过期 过期的时间单位
  * @param ok_reply
  * @param abort_reply
@@ -93,6 +99,7 @@ void setGenericCommand(client *c, int flags, robj *key, robj *val, robj *expire,
     long long milliseconds = 0, when = 0; /* initialized to avoid any harmness warning */
 
     if (expire) { // 设置了过期
+        // 过期时间格式转换 str->long整数(64位架构下long和long long是一样的)
         if (getLongLongFromObjectOrReply(c, expire, &milliseconds, NULL) != C_OK)
             return;
         if (milliseconds <= 0 || (unit == UNIT_SECONDS && milliseconds > LLONG_MAX / 1000)) {
